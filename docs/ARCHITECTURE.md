@@ -4,7 +4,7 @@
 
 [English](ARCHITECTURE.en.md) · 中文 · [用户指南](USER_GUIDE.zh-CN.md)
 
-本文描述 1.6.0 的接口与行为，支持 DSH `0.2.1-rc.2` 并保留旧版支持；原生集成测试覆盖新旧两套锁定宿主。版本变更见[更新日志](../CHANGELOG.md)。运行时代码是接口与行为的依据；用户操作说明与本文应保持一致。
+本文描述 1.6.1 的接口与行为；原生集成测试覆盖 DSH `0.1.7-rc.2`、`0.2.1-rc.2` 和 `0.2.1-rc.5`。版本变更见[更新日志](../CHANGELOG.md)。运行时代码是接口与行为的依据；用户操作说明与本文应保持一致。
 
 ## 产品边界与模块
 
@@ -235,13 +235,15 @@ npm ci --prefix test/fixtures/native-host --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs
 npm ci --prefix test/fixtures/native-host-0.2.1 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1
+npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
 npm pack --dry-run --json
 git diff --check
 ```
 
-原生集成命令会分别安装锁定的 `@deepseek-ai/dsh-session@0.1.7-rc.2` 和 `@deepseek-ai/dsh-session@0.2.1-rc.2` fixtures，每套都要求八个原生集成用例全部执行且不能跳过；这是 CI 强制原生 Host 集成门禁的本地等价检查。
+原生集成命令会分别安装锁定的 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2` 和 `0.2.1-rc.5` fixtures，每套都要求八个原生集成用例全部执行且不能跳过；这是 CI 强制原生 Host 集成门禁的本地等价检查。
 
-声明的 DSH `>=0.1.0-rc.7` 范围仍以 Host 公开能力为准。发布自动化在 Ubuntu 上测试 Node.js 18，并在 Ubuntu、macOS 和 Windows 上测试 Node.js 24；Node.js 24 矩阵在三个平台上分别强制运行基于官方 `@deepseek-ai/dsh-session@0.1.7-rc.2` 和 `@deepseek-ai/dsh-session@0.2.1-rc.2` 的两套 Host 后端集成（每套 8/8）与打包检查，覆盖 v4 会话格式。[截图](../screenshots.json)使用虚构示例聊天展示当前界面。
+声明的 DSH `>=0.1.0-rc.7` 范围仍以 Host 公开能力为准。发布自动化在 Ubuntu 上测试 Node.js 18，并在 Ubuntu、macOS 和 Windows 上测试 Node.js 24；Node.js 24 矩阵在三个平台上分别强制运行基于官方 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2` 和 `0.2.1-rc.5` 的三套 Host 后端集成（每套 8/8）与打包检查，覆盖 v4 会话格式。[截图](../screenshots.json)使用虚构示例聊天展示当前界面。
 
 永久删除在最终读取子代理关系前先取消并释放活动代理。完整后代集合以可选 `cascadeSessionIds` 保存到父会话的 `purge-pending` 记录；父目录消失后也保留该记录，直到所有子代理清理完成。用户明确重试时据此恢复级联，不跨越分叉或已有独立回收记录的子树。待重试记录清空前不要降级到不支持此字段的版本。
 

@@ -4,7 +4,7 @@
 
 English · [中文](ARCHITECTURE.md) · [User guide](USER_GUIDE.md)
 
-This document describes the interfaces and behavior of 1.6.0, with DSH `0.2.1-rc.2` compatibility, older Host support, and native integration coverage for both pinned Host versions. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
+This document describes the interfaces and behavior of 1.6.1. Native integration tests cover DSH `0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
 
 ## Product boundary and modules
 
@@ -235,13 +235,15 @@ npm ci --prefix test/fixtures/native-host --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs
 npm ci --prefix test/fixtures/native-host-0.2.1 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1
+npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
 npm pack --dry-run --json
 git diff --check
 ```
 
-The native commands install the locked `@deepseek-ai/dsh-session@0.1.7-rc.2` and `@deepseek-ai/dsh-session@0.2.1-rc.2` fixtures and require all eight native integration cases to run without skips for each fixture. This is the local equivalent of the mandatory native Host integration gate in CI.
+The native commands install the locked `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5` fixtures and require all eight native integration cases to run without skips for each fixture. This is the local equivalent of the mandatory native Host integration gate in CI.
 
-The declared DSH `>=0.1.0-rc.7` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires both official Host backend fixtures, `@deepseek-ai/dsh-session@0.1.7-rc.2` and `@deepseek-ai/dsh-session@0.2.1-rc.2`, on all three platforms (8/8 each), along with package checks, including the v4 session format. The [screenshots](../screenshots.json) show the current interface with synthetic example chats.
+The declared DSH `>=0.1.0-rc.7` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all three official Host backend fixtures, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5`, on all three platforms (8/8 each), along with package checks, including the v4 session format. The [screenshots](../screenshots.json) show the current interface with synthetic example chats.
 
 Permanent deletion quiesces live agents before the final descendant inventory. Optional `cascadeSessionIds` in the parent purge-pending record persist the complete targets until every descendant finishes, so explicit retries can continue after the parent directory disappears. Forks and subtrees with independent recycle records remain outside the cascade. Do not downgrade to a version that does not understand this field while these records are pending.
 

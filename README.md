@@ -34,7 +34,7 @@ Archive Management adds conversation search, organization and backups to DeepSee
 - **Organize chats:** manage Archived and Unarchived, including workspace groups, ungrouped chats, bulk actions, tags and notes.
 - **Keep a backup:** export JSON + Markdown ZIPs; preview imports and skip existing IDs instead of overwriting them.
 
-> This document describes 1.6.0. New recycle operations and automatic cleanup are retired; see [upgrading](#upgrading-from-older-releases) for existing data.
+> This document describes 1.6.1. New recycle operations and automatic cleanup are retired; see [upgrading](#upgrading-from-older-releases) for existing data.
 
 ## Install and open
 
@@ -103,7 +103,7 @@ Installing an older release can restore its earlier cleanup rules. Before downgr
 
 ## Compatibility
 
-The declared range is DSH `>=0.1.0-rc.7`; features still depend on Host capabilities. Native tests use pinned `0.1.7-rc.2` and `0.2.1-rc.2` backends; release CI covers macOS, Windows and Linux.
+The declared range is DSH `>=0.1.0-rc.7`; features still depend on Host capabilities. Native tests use pinned `0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5` backends; release CI covers macOS, Windows and Linux.
 
 Archive, unarchive and inventory use official capabilities. Permanent deletion coordinates Host session lifecycle and storage locations rather than calling one unified public deletion API. ZIP import and legacy snapshot recovery also have different writer requirements. See [compatibility and limits](docs/USER_GUIDE.md#compatibility-and-limits).
 
@@ -139,6 +139,8 @@ npm ci --prefix test/fixtures/native-host --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs
 npm ci --prefix test/fixtures/native-host-0.2.1 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1
+npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
 npm pack --dry-run --json
 ```
 
