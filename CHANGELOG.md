@@ -4,6 +4,18 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 1.6.1 — 2026-11-02
+
+### 中文
+
+- 兼容 DSH `0.2.1-rc.5`：在可选会话依赖范围中显式接受该版本，修复安装时的 peer 依赖解析冲突，保留此前支持范围（#64）。
+- 增加 `0.2.1-rc.5` 官方后端锁定夹具，并加入 Ubuntu、macOS、Windows 原生集成矩阵；保留 `0.1.7-rc.2` 和 `0.2.1-rc.2` 回归覆盖。
+
+### English
+
+- Support DSH `0.2.1-rc.5` by explicitly accepting it in the optional session peer range, fixing installation dependency-resolution conflicts while preserving earlier support (#64).
+- Add a pinned `0.2.1-rc.5` official backend fixture to the Ubuntu, macOS and Windows native-integration matrix, retaining coverage for `0.1.7-rc.2` and `0.2.1-rc.2`.
+
 ## 1.6.0 — 2026-10-22
 
 ### 中文
