@@ -6,11 +6,11 @@
   "author": "Ultronen",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Ultronen/dsh-archived-chats.git"
+    "url": "git+https://github.com/Ultroncn/dsh-archived-chats.git"
   },
-  "homepage": "https://github.com/Ultronen/dsh-archived-chats",
+  "homepage": "https://github.com/Ultroncn/dsh-archived-chats",
   "bugs": {
-    "url": "https://github.com/Ultronen/dsh-archived-chats/issues"
+    "url": "https://github.com/Ultroncn/dsh-archived-chats/issues"
   },
   "keywords": [
     "deepseek-harness",
