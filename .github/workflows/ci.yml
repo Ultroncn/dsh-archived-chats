@@ -77,24 +77,6 @@ jobs:
 
       - run: npm ci
       - run: npm test
-        if: runner.os != 'Windows'
-      - name: Run Windows tests with failure diagnostics
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $output = & npm test 2>&1 | ForEach-Object { "$_" }
-          $testExitCode = $LASTEXITCODE
-          $output | ForEach-Object { Write-Output $_ }
-          if ($testExitCode -ne 0) {
-            for ($i = 0; $i -lt $output.Count; $i++) {
-              if ($output[$i] -match 'not ok|AssertionError|ERR_ASSERTION|Error:|npm error|✖') {
-                $last = [Math]::Min($output.Count - 1, $i + 24)
-                $message = ($output[$i..$last] -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-                Write-Output "::error title=Windows test failure::$message"
-              }
-            }
-          }
-          exit $testExitCode
       - name: Install locked official Host fixture
         run: npm ci --prefix test/fixtures/${{ matrix.fixture }} --ignore-scripts --include=optional
       - name: Run mandatory native Host integration
