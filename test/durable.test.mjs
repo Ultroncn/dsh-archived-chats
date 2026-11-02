@@ -40,7 +40,9 @@ async function holdWithoutDeleteSharing(t, path) {
   child.stderr.setEncoding('utf8');
   child.stdout.on('data', (chunk) => { stdout += chunk; });
   child.stderr.on('data', (chunk) => { stderr += chunk; });
-  const lifetime = setTimeout(() => child.kill(), 10_000);
+  // PowerShell cold starts can exceed 5s on loaded Windows runners.
+  const startupTimeoutMs = 30_000;
+  const lifetime = setTimeout(() => child.kill(), startupTimeoutMs + 10_000);
   const exited = new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', (code, signal) => {
@@ -49,7 +51,7 @@ async function holdWithoutDeleteSharing(t, path) {
     });
   });
   const ready = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`deny-delete helper did not become ready: ${stderr}`)), 5_000);
+    const timeout = setTimeout(() => reject(new Error(`deny-delete helper did not become ready: ${stderr}`)), startupTimeoutMs);
     const inspect = () => {
       if (!stdout.includes('READY')) return;
       clearTimeout(timeout);
@@ -244,8 +246,16 @@ test('Windows runner exercises real long Unicode paths, fsync limits, and deny-d
     (error) => ['EPERM', 'EACCES', 'EBUSY'].includes(error.code),
     'the real Windows rename must be refused while delete sharing is denied',
   );
-  const replacing = replaceFile(replacement, occupied, { delayMs: 100, attempts: 5 });
-  await new Promise((resolve) => { setTimeout(resolve, 50); });
+  let firstAttemptFinished;
+  const firstAttempt = new Promise((resolve) => { firstAttemptFinished = resolve; });
+  const replacing = replaceFile(replacement, occupied, {
+    delayMs: 100,
+    attempts: 5,
+    async renameFile(...paths) {
+      try { await rename(...paths); } finally { firstAttemptFinished(); }
+    },
+  });
+  await firstAttempt;
   await holder.release();
   const attempt = await replacing;
   assert(attempt > 1, `production replacement must retry after a real refusal (attempt=${attempt})`);
