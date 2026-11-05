@@ -4,7 +4,7 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
-## Unreleased
+## 1.6.2 — 2026-11-05
 
 ### 中文
 
