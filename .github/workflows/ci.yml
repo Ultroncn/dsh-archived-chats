@@ -86,7 +86,7 @@ jobs:
 
       - run: npm ci
       - run: npm test
-      - name: Install locked official Host fixture
+      - name: Install pinned official Host fixture
         if: matrix.fixture != 'native-host-0.2.2-rc.1'
         run: npm ci --prefix test/fixtures/${{ matrix.fixture }} --ignore-scripts --include=optional
 
