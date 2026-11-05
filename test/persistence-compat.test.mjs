@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePersistenceCompat } from '../lib/persistence-compat.js';
+import { resolvePersistenceCompat, sessionCwdRestoreIssue } from '../lib/persistence-compat.js';
 
 const HEADER = Object.freeze({
   id: 'session-modern',
@@ -399,4 +399,38 @@ test('reads the current Host session location from stat snapshots', async () => 
 
   raw.stat = async () => ({ header: HEADER, location: { kind: 'jsonl', path: 'relative/path' } });
   await assert.rejects(view.locate(HEADER), { code: 'session-location-unavailable' });
+});
+
+
+test('restore cwd compatibility distinguishes foreign paths without changing native path semantics', () => {
+  const cases = [
+    [undefined, 'linux', undefined],
+    [undefined, 'win32', undefined],
+    ['/home/test/project', 'linux', undefined],
+    ['/home/test/project', 'win32', 'restore-cwd-platform-unsupported'],
+    ['/tmp/project\\with-backslash', 'linux', undefined],
+    ['//server/share/project', 'linux', undefined],
+    ['//server/share/project', 'win32', undefined],
+    ['/\\server\\share/project', 'linux', undefined],
+    ['/\\server\\share/project', 'win32', undefined],
+    ['//?/C:/project', 'linux', undefined],
+    ['//?/C:/project', 'win32', undefined],
+    ['C:\\Users\\test\\project', 'linux', 'restore-cwd-platform-unsupported'],
+    ['c:/projects/test/项目', 'darwin', 'restore-cwd-platform-unsupported'],
+    ['C:\\Users\\test\\project', 'win32', undefined],
+    ['c:/projects/test/项目', 'win32', undefined],
+    ['\\\\server\\share\\project', 'linux', 'restore-cwd-platform-unsupported'],
+    ['\\\\server\\share\\project', 'win32', undefined],
+    ['C:project', 'linux', 'restore-cwd-invalid'],
+    ['C:project', 'win32', 'restore-cwd-invalid'],
+    ['relative/project', 'linux', 'restore-cwd-invalid'],
+    ['relative/project', 'win32', 'restore-cwd-invalid'],
+    ['', 'linux', 'restore-cwd-invalid'],
+    [null, 'linux', 'restore-cwd-invalid'],
+    [12, 'win32', 'restore-cwd-invalid'],
+    ['/tmp/with\0nul', 'linux', 'restore-cwd-invalid'],
+  ];
+  for (const [cwd, platform, expected] of cases) {
+    assert.equal(sessionCwdRestoreIssue(cwd, platform), expected, `${platform}: ${JSON.stringify(cwd)}`);
+  }
 });

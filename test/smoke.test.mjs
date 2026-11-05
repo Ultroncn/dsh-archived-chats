@@ -2808,6 +2808,7 @@ console.log('\n[11c] client half — archive insights UI');
     sessions: [
       { id: 'new-session', title: 'New chat', workspace: { id: 'ws-1', title: '项目一' }, conflict: false, warnings: ['workspace-unresolved'] },
       { id: 'old-session', title: 'Existing chat', workspace: null, conflict: true, warnings: [] },
+      { id: 'foreign-session', title: 'Foreign chat', workspace: null, conflict: false, restoreBlocked: 'restore-cwd-platform-unsupported', warnings: [] },
     ],
     selectedIds: ['new-session'],
     result: null,
@@ -2821,6 +2822,12 @@ console.log('\n[11c] client half — archive insights UI');
   assert(elementText(importDialog).includes('项目不存在，将保持未分组'), 'import preview renders workspace warnings');
   const importCheckboxes = collectElements(importDialog).filter((el) => el.type === 'input' && el.props?.type === 'checkbox');
   assert(importCheckboxes.some((checkbox) => checkbox.props.disabled === true && checkbox.props.checked === false), 'conflicting import rows are disabled and unselected');
+  assert(importCheckboxes[2]?.props.disabled === true && importCheckboxes[2]?.props.checked === false, 'incompatible cwd import rows are disabled and unselected');
+  assert(elementText(importDialog).includes('工作目录与当前系统不兼容'), 'import preview explains the cwd incompatibility');
+  states[27].value = { ...states[27].value, selectedIds: [] };
+  const selectRestorable = collectElements(renderSection()).find(el => el.type === 'button' && elementText(el) === '全选可恢复项');
+  selectRestorable?.props.onClick();
+  assert(JSON.stringify(states[27].value.selectedIds) === JSON.stringify(['new-session']), 'select restorable excludes incompatible cwd rows');
   const restoreRequests = [];
   const savedImportFetch = globalThis.fetch;
   let finishRestore;
