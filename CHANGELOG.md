@@ -4,6 +4,22 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## Unreleased
+
+### 中文
+
+- 兼容 DSH `0.2.2-rc.1`：在 DSH 引擎声明和可选 Session peer 范围中明确加入该候选版本。
+- 适配新版 Persistence 快照位置：旧后端继续使用 `locate()`，当前后端缺少该扩展时改从 `stat()` 快照读取后端文件位置。
+- 原生集成夹具增加官方 `0.2.2-rc.1` Session、Persistence、Projection 和存储依赖；在 Ubuntu、macOS、Windows 上执行完整的八项 Host 集成测试。
+- 更新 Projection 测试以等待异步注册句柄。
+
+### English
+
+- Support DSH `0.2.2-rc.1` explicitly in the DSH engine declaration and optional Session peer range.
+- Adapt to snapshot-backed Persistence locations: retain legacy `locate()` support and fall back to the current backend location exposed by `stat()`.
+- Add official `0.2.2-rc.1` Session, Persistence, Projection and storage packages to the native integration fixture; run all eight Host integration cases on Ubuntu, macOS and Windows.
+- Await asynchronous Projection registration in the native test harness.
+
 ## 1.6.1 — 2026-11-02
 
 ### 中文
