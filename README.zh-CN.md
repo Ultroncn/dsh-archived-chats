@@ -144,7 +144,7 @@ node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host
 npm pack --dry-run --json
 ```
 
-原生测试使用隔离临时数据，每套 8 项均要求执行且不能跳过。提交贡献前请完整阅读[贡献指南](CONTRIBUTING.md)。
+原生测试使用隔离临时数据，每套 9 项均要求执行且不能跳过。提交贡献前请完整阅读[贡献指南](CONTRIBUTING.md)。
 
 ## 卸载
 

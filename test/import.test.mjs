@@ -461,3 +461,21 @@ test('a real export ZIP validates and restores through an exclusive-create/appen
   assert.deepEqual(saved.get('session-x'), { tags: ['keep'], note: 'a note' });
   await rm(root, { recursive: true, force: true });
 });
+
+test('import preview blocks incompatible cwd without changing the backup and selection skips it', () => {
+  const cwd = process.platform === 'win32' ? '/home/test/project' : 'C:\\Users\\test\\project';
+  const source = { meta: { version: 3, id: 'foreign', createdAt: 42, isSeeded: false, cwd }, events: [] };
+  const bytes = makePackage([{ id: 'foreign', source }, { id: 'native' }]);
+  const original = bytes.slice();
+  const result = inspectImport({ bytes });
+  assert.equal(result.ok, true);
+  assert.equal(result.plan.items[0].restoreBlocked, 'restore-cwd-platform-unsupported');
+  assert.equal(result.plan.items[1].restoreBlocked, undefined);
+  assert.deepEqual(result.plan.items[0].record.source, source);
+  assert.deepEqual(bytes, original);
+  const selected = selectImportItems(result.plan, ['foreign', 'native']);
+  assert.deepEqual(selected.records.map(record => record.id), ['native']);
+  assert.deepEqual(selected.skipped, [{ id: 'foreign', reason: 'restore-cwd-platform-unsupported' }]);
+  delete result.plan.items[0].restoreBlocked;
+  assert.deepEqual(selectImportItems(result.plan, ['foreign']).records, [], 'selection rechecks the header instead of trusting preview flags');
+});

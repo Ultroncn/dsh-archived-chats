@@ -725,3 +725,42 @@ for (const legacy of [false, true]) test(`cold title publication preserves a for
   assert.deepEqual(observed.events, record.record.source.events);
   assert.deepEqual(requestedServices, ['sessionProjectionCache']);
 });
+
+test('restore preflights incompatible cwd across the batch before staging or writing', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const record = item('foreign');
+  record.record.source.meta.cwd = process.platform === 'win32' ? '/home/test/project' : 'C:\\Users\\test\\project';
+  const original = structuredClone(record);
+  const adapter = createRestoreAdapter({ ...f, tempRoot: join(f.root, 'must-not-create') });
+  await assert.rejects(adapter.prepare([item('native'), record]), { code: 'restore-cwd-platform-unsupported', status: 409 });
+  assert.deepEqual(await readdir(f.root), []);
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing']);
+  assert.deepEqual(record, original);
+});
+
+for (const cwd of ['relative/project', 'C:relative', '', 7]) test(`restore refuses invalid cwd before writing (${JSON.stringify(cwd)})`, async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const record = item('invalid-cwd');
+  record.record.source.meta.cwd = cwd;
+  const adapter = createRestoreAdapter({ ...f, tempRoot: f.root });
+  await assert.rejects(adapter.prepare([record]), { code: 'restore-cwd-invalid', status: 400 });
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(await readdir(f.root), []);
+});
+
+test('restore rechecks every staged cwd before the first persistence write', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const records = [item('first'), item('changed')];
+  const adapter = createRestoreAdapter({ ...f, tempRoot: f.root });
+  const tx = await adapter.prepare(records);
+  for (const record of records) await tx.stage(record);
+  records[1].record.source.meta.cwd = 'C:relative';
+  await assert.rejects(tx.commit(), { code: 'restore-cwd-invalid' });
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing']);
+  assert.deepEqual(await readdir(f.root), []);
+});

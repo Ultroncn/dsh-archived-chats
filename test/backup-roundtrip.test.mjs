@@ -454,3 +454,22 @@ test('official projection cache publishes restored ordinary and seeded titles to
     await handle.close();
   }
 });
+
+test('official modern backend: incompatible cwd is blocked before restore without changing the ZIP or Host', { skip: !nativeRoot }, async t => {
+  const f = await fixture(t);
+  const id = 'session-foreign-cwd';
+  const cwd = process.platform === 'win32' ? '/home/test/project' : 'C:\\Users\\test\\project';
+  const backup = await smallBackup(id, cwd);
+  const original = Buffer.from(backup.bytes);
+  const preview = await f.inspect(backup.bytes);
+  assert.equal(preview.sessions[0].conflict, false);
+  assert.equal(preview.sessions[0].restoreBlocked, 'restore-cwd-platform-unsupported');
+  const restored = await f.call('/import/restore', { token: preview.token, nonce: preview.nonce, sessionIds: [id] });
+  assert.equal(restored.status, 409, restored.bytes.toString());
+  assert.equal(restored.json().error, 'restore-cwd-platform-unsupported');
+  assert.deepEqual(restored.json().skipped, [{ id, reason: 'restore-cwd-platform-unsupported' }]);
+  assert.deepEqual(await f.raw.list(), []);
+  assert.deepEqual(f.registry.archivedSessionIds, []);
+  assert.deepEqual(f.workspace.sessionIds, []);
+  assert.deepEqual(backup.bytes, original);
+});

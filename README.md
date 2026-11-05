@@ -146,7 +146,7 @@ node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host
 npm pack --dry-run --json
 ```
 
-Native checks use isolated temporary data; all eight tests in each fixture must run without skips. Read the [contribution guide](CONTRIBUTING.md) in full before contributing.
+Native checks use isolated temporary data; all nine tests in each fixture must run without skips. Read the [contribution guide](CONTRIBUTING.md) in full before contributing.
 
 ## Uninstall
 
