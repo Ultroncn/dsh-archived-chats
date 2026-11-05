@@ -375,3 +375,28 @@ test('full reads reject inconsistent fork boundaries and still close handles', a
     assert.equal(closed, 1);
   }
 });
+
+
+test('reads the current Host session location from stat snapshots', async () => {
+  const location = { kind: 'jsonl', path: '/sessions/session-modern/session.v4.jsonl.zstd' };
+  const raw = {
+    async list() { return []; },
+    async open() { throw new Error('not used'); },
+    async stat(id) {
+      assert.equal(this, raw);
+      assert.equal(id, HEADER.id);
+      return { header: HEADER, revision: 'rev-v4', formatStatus: 'current', location };
+    },
+  };
+  const view = resolvePersistenceCompat(raw);
+  assert.deepEqual(await view.locate(HEADER), location);
+
+  raw.stat = async () => undefined;
+  assert.equal(await view.locate(HEADER), undefined);
+
+  raw.stat = async () => ({ header: { ...HEADER, id: 'another-session' }, location });
+  await assert.rejects(view.locate(HEADER), { code: 'session-location-unavailable' });
+
+  raw.stat = async () => ({ header: HEADER, location: { kind: 'jsonl', path: 'relative/path' } });
+  await assert.rejects(view.locate(HEADER), { code: 'session-location-unavailable' });
+});
