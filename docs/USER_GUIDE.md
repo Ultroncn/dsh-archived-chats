@@ -179,6 +179,7 @@ Import accepts this plugin's v1 and v2 ZIP formats and previews before writing:
 
 - Existing IDs, Recycle Bin entries, and unfinished deletion tasks are marked as conflicts, disabled, and skipped; existing sessions are never overwritten.
 - Missing workspaces produce warnings and ungrouped archived chats.
+- Incompatible or ambiguous working directories are disabled in preview and refused again before restore writes, without translating or discarding them. Examples include Windows drive paths on macOS/Linux and `/project`-style roots on Windows. The latter could be a POSIX path or a Windows current-drive root; the backup cannot distinguish these, so restoration is conservatively refused. Invalid and drive-relative paths are also refused. Keep the original ZIP. Directory mapping is not yet provided; this is a safety check, not full cross-platform migration support.
 - Tags and notes follow the same length limits.
 - Expired confirmation requires another preview; unsupported restore writes are refused.
 
@@ -247,7 +248,7 @@ Features depend on public Host capabilities, not just a version number:
 - Version 2 protection records require this or a newer plugin. Before downgrading, restore recycled chats you need to retain and back up plugin data.
 - If `trash.json` cannot be read, Archived is marked unverified, the Recycle Bin is unavailable, and archive mutations such as unarchive, tag/note editing, and deletion are refused instead of guessing.
 
-The declared DSH `>=0.1.0-rc.7` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all three pinned official Host backends, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5` (eight integration cases each) and package checks, including the v4 session format.
+The declared DSH `>=0.1.0-rc.7` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all three pinned official Host backends, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5` (nine integration cases each) and package checks, including the v4 session format.
 
 ## Local data and uninstall
 
