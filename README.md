@@ -103,7 +103,7 @@ Installing an older release can restore its earlier cleanup rules. Before downgr
 
 ## Compatibility
 
-The declared range is DSH `>=0.1.0-rc.7`; features still depend on Host capabilities. Native tests use pinned `0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5` backends; release CI covers macOS, Windows and Linux.
+The declared range is DSH `>=0.1.0-rc.7 || 0.2.2-rc.1`; features still depend on Host capabilities. Native integration tests cover official `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1` backends; CI runs the Host matrix on macOS, Windows and Linux.
 
 Archive, unarchive and inventory use official capabilities. Permanent deletion coordinates Host session lifecycle and storage locations rather than calling one unified public deletion API. ZIP import and legacy snapshot recovery also have different writer requirements. See [compatibility and limits](docs/USER_GUIDE.md#compatibility-and-limits).
 
