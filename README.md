@@ -34,7 +34,7 @@ Archive Management adds conversation search, organization and backups to DeepSee
 - **Organize chats:** manage Archived and Unarchived, including workspace groups, ungrouped chats, bulk actions, tags and notes.
 - **Keep a backup:** export JSON + Markdown ZIPs; preview imports and skip existing IDs instead of overwriting them.
 
-> This document describes 1.6.3. New recycle operations and automatic cleanup are retired; see [upgrading](#upgrading-from-older-releases) for existing data.
+> This document describes 1.6.4. New recycle operations and automatic cleanup are retired; see [upgrading](#upgrading-from-older-releases) for existing data.
 
 ## Install and open
 
