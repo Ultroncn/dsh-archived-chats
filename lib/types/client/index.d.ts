@@ -2,9 +2,8 @@
  * Browser client entry — the Archive Management settings section with a workspace
  * chooser and one-confirmation bulk archive flow. The flow stays inside the
  * plugin-owned Settings surface and requires no workspace-row extension slot.
- * The searchable manager includes Archived, Recycle Bin, Storage & Retention,
- * Origins & Branches, and About views. Only workspace actions move archived
- * chats to the Recycle Bin and offer immediate Undo. Delete/Delete all instead
+ * The searchable manager includes Archived, Unarchived, Origins & Branches,
+ * About, and a conditional legacy Recycle Bin view. Delete/Delete all
  * require confirmation for irreversible permanent deletion. Recycle restore
  * returns chats to Archived; Unarchive returns them to the main chat area.
  * The recycle view provides original-backed read-only previews,
@@ -40,75 +39,6 @@ export interface RecycleSummary {
   degradedCount: number;
   purgePendingCount: number;
 }
-
-export interface RetentionPolicy {
-  historicalSnapshotsPerSession: number;
-  historicalSnapshotMaxAgeDays: number | null;
-  snapshotQuotaBytes: number | null;
-  recycleMaxAgeDays: number | null;
-  /** Explicit opt-in; legacy policies load as false. */
-  recycleAutoDelete: boolean;
-}
-
-export interface StorageInsightsSummary {
-  sessionBytes: number;
-  snapshotBytes: number;
-  totalMeasuredBytes: number;
-  duplicateSnapshotBytes: number;
-  sessionUnavailableCount: number;
-  degradedSnapshotCount: number;
-}
-
-export interface StorageInsights {
-  generatedAt: string;
-  summary: StorageInsightsSummary;
-  sessions: Array<{
-    id: string;
-    title: string | null;
-    workspaceId: string | null;
-    workspaceTitle: string | null;
-    scope: 'archive' | 'trash';
-    status: 'ready' | 'unavailable';
-    sizeBytes: number | null;
-    fileCount: number | null;
-  }>;
-  snapshots: Array<
-    | {
-      snapshotId: string;
-      sessionId: string;
-      createdAt: string;
-      totalBytes: number;
-      sessionBytes: number;
-      attachmentCount: number;
-      status: 'ready';
-      active: boolean;
-    }
-    | {
-      snapshotId: string;
-      status: 'degraded';
-      code: string;
-      active: boolean;
-    }
-  >;
-  policy: RetentionPolicy;
-  candidateSummary: {
-    snapshotCount: number;
-    recycleCount: number;
-    projectedSnapshotBytes: number;
-  };
-}
-
-export type RetentionCandidate =
-  | {
-    key: string;
-    action: 'purge-trash';
-    reason: 'recycle-age';
-    sessionId: string;
-    state: 'trashed' | 'degraded';
-    trashedAt: string;
-    snapshotId: string | null;
-    bytes: number;
-  };
 
 export type LineageStatus = 'active' | 'archived' | 'trash' | 'missing';
 export type LineageDiagnosticCode = 'missing-parent' | 'self-parent' | 'cycle' | 'delegation-depth-mismatch';

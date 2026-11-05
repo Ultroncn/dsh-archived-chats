@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TrashStoreError, createTrashStore, normalizeTrashRecord, readLegacyPending, selectTrashIds } from '../lib/trash.js';
+import { TrashStoreError, createTrashStore, normalizeTrashRecord, selectTrashIds } from '../lib/trash.js';
 
 const readyRecord = (id = 'session-a') => ({
   sessionId: id,
@@ -164,20 +164,6 @@ test('serializes concurrent writes across store instances and cleans failed temp
   await assert.rejects(createTrashStore({ path: blockedPath }).put(readyRecord('c')));
   const leftovers = (await readdir(root)).filter((name) => name.startsWith('blocked.json.') && name.endsWith('.tmp'));
   assert.deepEqual(leftovers, []);
-});
-
-test('legacy pending accepts only the exact ids array shape', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dac-pending-'));
-  const path = join(root, 'pending-deletions.json');
-  assert.deepEqual(await readLegacyPending(join(root, 'missing.json')), { status: 'ready', ids: [] });
-  await writeFile(path, '{"ids":["a","a","b"]}\n', 'utf8');
-  assert.deepEqual(await readLegacyPending(path), { status: 'ready', ids: ['a', 'b'] });
-  await writeFile(path, '{"version":1,"ids":["a"]}\n', 'utf8');
-  assert.equal((await readLegacyPending(path)).status, 'unavailable');
-  await writeFile(path, '{"ids":[""]}\n', 'utf8');
-  assert.equal((await readLegacyPending(path)).status, 'unavailable');
-  await writeFile(path, '{broken', 'utf8');
-  assert.equal((await readLegacyPending(path)).status, 'unavailable');
 });
 
 

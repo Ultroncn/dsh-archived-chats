@@ -268,6 +268,7 @@ function recycleFixture(options = {}) {
       return { valid, degraded };
     },
   };
+  if (options.snapshotCaptureMissing) delete snapshotStore.capture;
   const attachments = {
     saved: [],
     async saveImage(input) {
@@ -409,42 +410,6 @@ test('missing-original snapshot restore refuses every seeded legacy boundary bef
   }
 });
 
-test('cold move snapshots before catalog commit and keeps authoritative state', async () => {
-  const fixture = recycleFixture();
-  assert.deepEqual(await fixture.service.move(['session-a']), { trashed: ['session-a'], failed: [] });
-  assert.deepEqual(fixture.calls.slice(0, 3), ['dispose:session-a', 'snapshot:capture:session-a', 'trash:put:session-a']);
-  assert.equal(fixture.calls.at(-1), 'cache:invalidate:session-a');
-  assert.equal(fixture.persistence.ids.has('session-a'), true);
-  assert.equal(fixture.workspace.sessionIds.has('session-a'), true);
-  assert.equal(fixture.registry.archivedSessionIds.includes('session-a'), true);
-});
-
-test('a new recycle cycle keeps the prior protection snapshot as history', async () => {
-  const priorSnapshotId = '00000000-0000-4000-8000-000000000009';
-  const fixture = recycleFixture({ priorSnapshotId });
-  assert.deepEqual(await fixture.service.move(['session-a']), { trashed: ['session-a'], failed: [] });
-  assert.equal(fixture.calls.includes(`snapshot:remove:${priorSnapshotId}`), false);
-});
-
-test('recycle reuses a healthy archive snapshot for the same stable source revision', async () => {
-  const existing = {
-    snapshotId: '00000000-0000-4000-8000-000000000009',
-    sessionId: 'session-a',
-    createdAt: '2026-08-23T00:00:00.000Z',
-    sourceRevision: 'rev-1',
-    totalBytes: 456,
-    attachmentCount: 2,
-  };
-  const fixture = recycleFixture({ existingRevision: existing });
-
-  assert.deepEqual(await fixture.service.move(['session-a']), { trashed: ['session-a'], failed: [] });
-  assert.equal(fixture.captures(), 0);
-  const record = await fixture.trashStore.get('session-a');
-  assert.equal(record.snapshotId, existing.snapshotId);
-  assert.equal(record.snapshotBytes, 456);
-  assert.equal(record.snapshotAttachmentCount, 2);
-});
-
 test('intact-original undo removes only marker and writes no persistence', async () => {
   const fixture = recycleFixture({ trashed: true });
   assert.deepEqual(await fixture.service.restore(['session-a']), { restored: ['session-a'], failed: [], warnings: [] });
@@ -453,9 +418,14 @@ test('intact-original undo removes only marker and writes no persistence', async
   assert.notEqual(await fixture.snapshotStore.latestFor('session-a'), null);
 });
 
+test('legacy recovery works without the retired snapshot capture method', async () => {
+  const fixture = recycleFixture({ trashed: true, snapshotCaptureMissing: true });
+  assert.deepEqual(await fixture.service.restore(['session-a']), { restored: ['session-a'], failed: [], warnings: [] });
+  assert.equal(await fixture.trashStore.get('session-a'), null);
+});
+
 test('official unarchive releases a recycled original and rearchive does not recycle it again', async () => {
-  const f = recycleFixture();
-  await f.service.move(['session-a']);
+  const f = recycleFixture({ trashed: true });
   const snapshots = f.publishedSnapshotIds();
   const metadata = structuredClone(f.metadata.get('session-a'));
   await f.registry.setState({ ...f.registry.state, archivedSessionIds: [] });
@@ -471,8 +441,7 @@ test('official unarchive releases a recycled original and rearchive does not rec
 });
 
 test('a queued official unarchive survives immediate rearchive before reconciliation runs', async () => {
-  const f = recycleFixture();
-  await f.service.move(['session-a']);
+  const f = recycleFixture({ trashed: true });
   await f.registry.setState({ ...f.registry.state, archivedSessionIds: [] });
   const reconcile = f.service.reconcileUnarchived(['session-a']);
   await f.registry.setState({ ...f.registry.state, archivedSessionIds: ['session-a'] });
@@ -494,8 +463,7 @@ test('official unarchive recognizes a canonical workspace path and its session p
 });
 
 test('an old empty-trash selection cannot purge an officially unarchived original', async () => {
-  const f = recycleFixture();
-  await f.service.move(['session-a']);
+  const f = recycleFixture({ trashed: true });
   const target = purgeTarget(f.records.get('session-a'));
   await f.registry.setState({ ...f.registry.state, archivedSessionIds: [] });
   const result = await f.service.empty([target]);
@@ -518,55 +486,7 @@ test('reconciliation preserves missing originals, identity conflicts and durable
   }
 });
 
-test('processes duplicate ids once and returns stable failures', async () => {
-  const fixture = recycleFixture();
-  const result = await fixture.service.move(['missing', 'session-a', 'session-a']);
-  assert.deepEqual(result.trashed, ['session-a']);
-  assert.deepEqual(result.failed, [{ id: 'missing', reason: 'session-not-archived' }]);
-  assert.equal(fixture.captures(), 1);
-});
-
-test('records live disposition and reports parked snapshot failures safely', async () => {
-  const disposed = recycleFixture({ disposition: 'disposed' });
-  await disposed.service.move(['session-a']);
-  assert.equal((await disposed.trashStore.get('session-a')).liveDisposition, 'disposed');
-
-  const parked = recycleFixture({ disposition: 'parked', snapshotError: new RecycleError('snapshot-write-failed', 'private message') });
-  assert.deepEqual(await parked.service.move(['session-a']), {
-    trashed: [],
-    failed: [{ id: 'session-a', reason: 'session-parked', cause: 'snapshot-write-failed' }],
-  });
-  assert.equal(await parked.trashStore.get('session-a'), null);
-});
-
-test('rechecks archive ownership after disposal and cleans only the new snapshot', async () => {
-  const fixture = recycleFixture({ pauseDispose: true });
-  const moving = fixture.service.move(['session-a']);
-  await fixture.disposeStarted;
-  fixture.registry.state.archivedSessionIds = [];
-  fixture.releaseDispose();
-  assert.deepEqual(await moving, { trashed: [], failed: [{ id: 'session-a', reason: 'operation-cancelled' }] });
-  assert.equal(fixture.captures(), 0);
-  assert.equal(await fixture.trashStore.get('session-a'), null);
-});
-
-test('rechecks ownership after snapshot publication and removes only the cancelled snapshot', async () => {
-  const fixture = recycleFixture({ pauseCapture: true });
-  const moving = fixture.service.move(['session-a']);
-  await fixture.captureStarted;
-  fixture.registry.state.archivedSessionIds = [];
-  fixture.releaseCapture();
-  assert.deepEqual(await moving, { trashed: [], failed: [{ id: 'session-a', reason: 'operation-cancelled' }] });
-  assert.equal(await fixture.trashStore.get('session-a'), null);
-  assert.equal(await fixture.snapshotStore.latestFor('session-a'), null);
-  assert.equal(fixture.calls.includes(`snapshot:remove:${SNAPSHOT_ID}`), true);
-});
-
 test('rejects unavailable stores and purge-pending restore without leaking record content', async () => {
-  const unavailable = recycleFixture();
-  unavailable.trashStore.load = async () => ({ status: 'unavailable', records: new Map() });
-  assert.deepEqual(await unavailable.service.move(['session-a']), { trashed: [], failed: [{ id: 'session-a', reason: 'trash-store-unavailable' }] });
-
   const pending = recycleFixture({ records: [trashRecord('session-a', 'purge-pending')] });
   assert.deepEqual(await pending.service.restore(['session-a']), { restored: [], failed: [{ id: 'session-a', reason: 'trash-state-conflict' }], warnings: [] });
 });
@@ -783,103 +703,6 @@ test('refuses direct and empty purge before changing records, snapshots, or sess
   }
 });
 
-test('startup recovery cannot delete purge-pending evidence without physical purge capability', async () => {
-  const fixture = recycleFixture({
-    records: [trashRecord('session-a', 'purge-pending')],
-    unsupportedPurge: true,
-  });
-  writeFileSync(fixture.pendingPath, '{"ids":[]}\n');
-  const before = await fixture.trashStore.get('session-a');
-  const snapshotBefore = await fixture.snapshotStore.latestFor('session-a');
-
-  await fixture.service.recoverStartup({ legacyPendingPath: fixture.pendingPath });
-
-  assert.deepEqual(await fixture.trashStore.get('session-a'), before);
-  assert.deepEqual(await fixture.snapshotStore.latestFor('session-a'), snapshotBefore);
-  assert.equal(fixture.persistence.ids.has('session-a'), true);
-  assert.deepEqual(fixture.calls.filter((call) => /^(trash:transition|snapshot:remove|dispose:|physical:purge)/.test(call)), []);
-});
-
-test('startup retries purge-pending but never deletes plain trash', async () => {
-  const fixture = recycleFixture({ records: [trashRecord('a'), trashRecord('b', 'purge-pending')] });
-  writeFileSync(fixture.pendingPath, '{"ids":[]}\n');
-  await fixture.service.recoverStartup({ legacyPendingPath: fixture.pendingPath });
-  assert.deepEqual(fixture.purgedIds, ['b']);
-  assert.notEqual(await fixture.trashStore.get('a'), null);
-  assert.equal(await fixture.trashStore.get('b'), null);
-});
-
-test('legacy pending migration snapshots archived ids and never purges them', async () => {
-  const fixture = recycleFixture();
-  writeFileSync(fixture.pendingPath, '{"ids":["session-a"]}\n');
-  await fixture.service.recoverStartup({ legacyPendingPath: fixture.pendingPath });
-  assert.notEqual(await fixture.trashStore.get('session-a'), null);
-  assert.deepEqual(fixture.purgedIds, []);
-  assert.equal(readFileSync(fixture.pendingPath, 'utf8'), '{\n  "ids": []\n}\n');
-});
-
-test('startup removes unreferenced valid and degraded snapshots while preserving every trash reference', async () => {
-  const second = { ...trashRecord('session-b'), snapshotId: SECOND_PROTECTED_ID };
-  const fixture = recycleFixture({
-    records: [trashRecord(), second],
-    inventoryValid: [
-      { snapshotId: SNAPSHOT_ID, sessionId: 'session-a', createdAt: NOW },
-      { snapshotId: SECOND_PROTECTED_ID, sessionId: 'session-b', createdAt: NOW },
-      { snapshotId: LEGACY_VALID_ID, sessionId: 'old-session', createdAt: NOW },
-    ],
-    inventoryDegraded: [{ snapshotId: LEGACY_DEGRADED_ID, code: 'snapshot-schema-invalid' }],
-  });
-  writeFileSync(fixture.pendingPath, '{"ids":[]}\n');
-
-  await fixture.service.recoverStartup({ legacyPendingPath: fixture.pendingPath });
-
-  assert.deepEqual(fixture.publishedSnapshotIds(), [SNAPSHOT_ID, SECOND_PROTECTED_ID]);
-});
-
-test('startup skips all legacy snapshot deletion when the trash authority is unreadable', async () => {
-  const fixture = recycleFixture({
-    inventoryValid: [{ snapshotId: LEGACY_VALID_ID, sessionId: 'old-session', createdAt: NOW }],
-    inventoryDegraded: [{ snapshotId: LEGACY_DEGRADED_ID, code: 'snapshot-schema-invalid' }],
-  });
-  fixture.trashStore.load = async () => ({ status: 'unavailable', records: new Map() });
-
-  await assert.rejects(
-    fixture.service.recoverStartup({ legacyPendingPath: fixture.pendingPath }),
-    (cause) => cause?.code === 'trash-store-unavailable',
-  );
-
-  assert.deepEqual(fixture.publishedSnapshotIds(), [LEGACY_VALID_ID, LEGACY_DEGRADED_ID]);
-  assert.deepEqual(fixture.calls.filter((call) => call.startsWith('snapshot:remove:')), []);
-});
-
-test('startup continues after one legacy snapshot deletion fails and retries it next time', async () => {
-  const fixture = recycleFixture({
-    inventoryValid: [{ snapshotId: LEGACY_VALID_ID, sessionId: 'old-session', createdAt: NOW }],
-    inventoryDegraded: [{ snapshotId: LEGACY_DEGRADED_ID, code: 'snapshot-schema-invalid' }],
-    snapshotRemoveFailures: { [LEGACY_VALID_ID]: 1 },
-  });
-  writeFileSync(fixture.pendingPath, '{"ids":[]}\n');
-
-  await fixture.service.recoverStartup({ legacyPendingPath: fixture.pendingPath });
-  assert.deepEqual(fixture.publishedSnapshotIds(), [LEGACY_VALID_ID]);
-  assert.equal(fixture.calls.some((call) => call.includes('Alpha') || call.includes('private snapshot removal detail')), false);
-
-  await fixture.service.recoverStartup({ legacyPendingPath: fixture.pendingPath });
-  assert.deepEqual(fixture.publishedSnapshotIds(), []);
-});
-
-test('startup cleanup preserves the protection snapshot created by pending migration in the same run', async () => {
-  const fixture = recycleFixture({
-    inventoryValid: [{ snapshotId: LEGACY_VALID_ID, sessionId: 'old-session', createdAt: NOW }],
-  });
-  writeFileSync(fixture.pendingPath, '{"ids":["session-a"]}\n');
-
-  await fixture.service.recoverStartup({ legacyPendingPath: fixture.pendingPath });
-
-  assert.deepEqual(fixture.publishedSnapshotIds(), [SNAPSHOT_ID]);
-  assert.equal((await fixture.trashStore.get('session-a')).snapshotId, SNAPSHOT_ID);
-});
-
 test('purge failure retains durable purge-pending intent and keeps the original session', async () => {
   const fixture = recycleFixture({ trashed: true, purgeError: Object.assign(new Error('disk failed'), { code: 'purge-failed' }) });
   assert.deepEqual(await fixture.service.purge(['session-a']), { purged: [], failed: [{ id: 'session-a', reason: 'purge-failed' }] });
@@ -901,25 +724,6 @@ test('purge never reports success when snapshot deletion fails, and never destro
     assert.equal(fixture.persistence.ids.has('session-a'), true);
     assert.equal(fixture.calls.includes('physical:purge:session-a'), false);
   }
-});
-
-test('legacy migration removes only unarchived markers and preserves malformed or failed entries', async () => {
-  const unarchived = recycleFixture({ unarchived: true });
-  writeFileSync(unarchived.pendingPath, '{"ids":["session-a"]}\n');
-  await unarchived.service.recoverStartup({ legacyPendingPath: unarchived.pendingPath });
-  assert.equal(readFileSync(unarchived.pendingPath, 'utf8'), '{\n  "ids": []\n}\n');
-  assert.equal(await unarchived.trashStore.get('session-a'), null);
-
-  const failed = recycleFixture({ snapshotError: Object.assign(new Error('full'), { code: 'snapshot-write-failed' }) });
-  writeFileSync(failed.pendingPath, '{"ids":["session-a"]}\n');
-  await failed.service.recoverStartup({ legacyPendingPath: failed.pendingPath });
-  assert.equal(readFileSync(failed.pendingPath, 'utf8'), '{"ids":["session-a"]}\n');
-
-  const malformed = recycleFixture();
-  writeFileSync(malformed.pendingPath, '{broken');
-  assert.deepEqual(await malformed.service.recoverStartup({ legacyPendingPath: malformed.pendingPath }), { status: 'legacy-pending-unavailable' });
-  assert.equal(readFileSync(malformed.pendingPath, 'utf8'), '{broken');
-  assert.deepEqual(malformed.purgedIds, []);
 });
 
 //#region cascade deletion
@@ -1017,16 +821,6 @@ test('emptying the Recycle Bin destroys stranded subagents', async () => {
   assert.deepEqual(result.failed, []);
 });
 
-test('moving to the recycle bin leaves descendants in place', async () => {
-  // The parent's log still exists after a soft delete, so its subagents are not
-  // orphans yet and a restore must find them untouched.
-  const fixture = recycleFixture({ extraHeaders: [subagentHeader('child', 'session-a')] });
-  const result = await fixture.service.move(['session-a']);
-  assert.deepEqual(result.trashed, ['session-a']);
-  assert.equal(fixture.persistence.ids.has('child'), true);
-  assert.equal(fixture.purgedIds.includes('child'), false);
-});
-
 test('a session with no descendants is unaffected by the cascade', async () => {
   const fixture = recycleFixture();
   const result = await fixture.service.deleteArchived(['session-a']);
@@ -1041,10 +835,10 @@ test('an unavailable header inventory refuses permanent deletion before removing
   assert.deepEqual(f.purgedIds, []);
 });
 
-test('startup recovery also deletes descendants of a pending parent', async () => {
+test('explicit retry deletes descendants of a pending parent', async () => {
   const f = recycleFixture({ records: [trashRecord('session-a', 'purge-pending')],
     extraHeaders: [subagentHeader('child', 'session-a'), subagentHeader('grandchild', 'child', 2)] });
-  await f.service.recoverStartup();
+  await f.service.purge(['session-a']);
   assert.deepEqual([...f.purgedIds].sort(), ['child', 'grandchild', 'session-a']);
 });
 
@@ -1057,7 +851,7 @@ test('a cascade failure retains durable targets after the parent has disappeared
   assert.equal(f.persistence.ids.has('session-a'), false);
   assert.deepEqual((await f.trashStore.get('session-a')).cascadeSessionIds, ['child', 'grandchild']);
   failChild = false;
-  await f.service.recoverStartup();
+  await f.service.purge(['session-a']);
   assert.equal(f.persistence.ids.size, 0);
   assert.equal((await f.trashStore.get('session-a')), null);
 });
@@ -1108,7 +902,7 @@ test('selected residual cleanup retries after restart without expanding to desce
   assert.deepEqual(result.pending, ['session-a']);
   assert.equal((await f.trashStore.get('session-a')).purgeSelectedOnly, true);
   fail = false;
-  await f.service.recoverStartup();
+  await f.service.purge(['session-a']);
   assert.equal(f.persistence.ids.has('session-a'), false);
   assert.equal(f.persistence.ids.has('child'), true);
 });

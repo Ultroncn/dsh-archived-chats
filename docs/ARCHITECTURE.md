@@ -4,7 +4,7 @@
 
 [English](ARCHITECTURE.en.md) · 中文 · [用户指南](USER_GUIDE.zh-CN.md)
 
-本文描述 1.6.3 的接口与行为；原生集成测试覆盖 DSH `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1`。版本变更见[更新日志](../CHANGELOG.md)。运行时代码是接口与行为的依据；用户操作说明与本文应保持一致。
+本文描述当前未发布代码的接口与行为；原生集成测试覆盖 DSH `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1`。版本变更见[更新日志](../CHANGELOG.md)。运行时代码是接口与行为的依据；用户操作说明与本文应保持一致。
 
 ## 产品边界与模块
 
@@ -20,8 +20,7 @@
 | `trash.js`、`snapshot.js`、`recycle.js` | 回收目录、可验证保护快照、旧记录恢复／永久删除 |
 | `export.js`、`import.js`、`restore.js` | ZIP 导出、有界导入验证、事务恢复 |
 | `metadata.js`、`durable.js` | 标签备注、串行原子写入与持久化操作 |
-| `search.js`、`stats.js`、`insights.js` | 消息投影与搜索、会话目录测量、空间分账 |
-| `retention.js`、`retention-service.js`、`auto-retention.js` | 旧策略与调度模块；当前不挂载自动任务 |
+| `search.js`、`stats.js` | 消息投影与搜索、会话目录测量 |
 | `lineage.js` | 只读来源、分叉与子代理关系投影 |
 | `session-graph.js` | 会话 ID 归一化、子代理后代解析与孤儿分类 |
 
@@ -37,7 +36,6 @@ POST /plugins/dsh-archived-chats/about/check-updates
 POST /plugins/dsh-archived-chats/about/install-update
 GET  /plugins/dsh-archived-chats/state
 GET  /plugins/dsh-archived-chats/stats
-GET  /plugins/dsh-archived-chats/insights
 GET  /plugins/dsh-archived-chats/lineage
 GET  /plugins/dsh-archived-chats/workspace-archive/workspaces
 POST /plugins/dsh-archived-chats/workspace-archive/preview
@@ -73,7 +71,7 @@ POST /plugins/dsh-archived-chats/orphans/export
 
 所有 `/history` 和 `/history/*` 路由已移除，不再承诺返回旧的 410 响应。全部 retention 操作路由返回 410 `retention-retired`；不执行策略写入或清理。
 
-`/delete` 接收 `sessionId`，`/delete-all` 接收 `sessionIds`。默认调用回收服务 `move`；仅 `permanent: true` 调用 `deleteArchived`。归档直接永久删除返回 `{ deleted, pending, failed }`；全部失败且没有删除成功项时为 HTTP 409，部分成功仍可返回 200，调用方必须检查结果数组，不能只看状态码。
+`/delete` 接收 `sessionId`，`/delete-all` 接收 `sessionIds`。缺少 `permanent: true` 时返回 410；明确永久删除才调用 `deleteArchived`。结果为 `{ deleted, pending, failed }`；全部失败且没有删除成功项时为 HTTP 409，部分成功仍可返回 200，调用方必须检查结果数组，不能只看状态码。
 
 回收接口分别调用 `restore`、`purge`、`empty`。empty 要求确认时捕获的精确 `trashed`／`degraded` 记录实例，包括回收与快照身份。服务只清理这些目标：之后新增的记录被排除，已变更目标失败，不扩大或重算范围。已有 `purge-pending` 任务只由独立重试流程续作。规范的独占目录检查只授权删除会话所有的目标，不是广义文件系统删除保证；结果不确定时保留持久记录。
 
@@ -91,7 +89,7 @@ POST /plugins/dsh-archived-chats/orphans/export
 | --- | --- |
 | `metadata.json` | 版本化标签备注 |
 | `trash.json` | 回收和永久删除意图的权威目录 |
-| `retention.json` | version 2 策略，含显式 `recycleAutoDelete` |
+| `retention.json` | 保留的旧策略；当前不读取或执行 |
 | `snapshots/` | 保护快照、暂存和恢复所需文件 |
 | `pending-deletions.json` | 旧删除标记；读取回收站时为缺少回收记录的标记补齐 `purge-pending` 入口，不执行删除或快照清扫 |
 | `legacy-recycle.json` | 旧版遗留，新版不再读取或投影 |
@@ -149,7 +147,7 @@ apply 只接受凭据，不接受调用方增补会话 ID。每条执行前在�
 
 选择模式在客户端保存已选 ID 集合。全选从筛选后的 `group.items` 获取范围；工作区批量操作仍使用完整 `group.sessionIds`。隐藏选择显示数量，切换页面或取消清空集合，列表更新后剔除已不存在的 ID。操作确认捕获 ID 快照并复用现有导出、取消归档和删除接口。选择模式隐藏行内修改及全局／工作区菜单，保留预览，更多提供导出选中。
 
-所有插件确认、预览、导入、元数据、空间和保留策略弹窗共用不透明的 `--dsw-alias-bg-layer-2` 背景及宿主 prominent elevation，兼容旧版阴影。菜单和提示使用不透明主题层；遮罩与悬停状态保留各自的半透明用途，避免将磨砂菜单 token 直接用于弹窗主体。
+所有插件确认、预览、导入和元数据弹窗共用不透明的 `--dsw-alias-bg-layer-2` 背景及宿主 prominent elevation，兼容旧版阴影。菜单和提示使用不透明主题层；遮罩与悬停状态保留各自的半透明用途，避免将磨砂菜单 token 直接用于弹窗主体。
 
 ## 关于与版本查询
 
@@ -164,7 +162,7 @@ apply 只接受凭据，不接受调用方增补会话 ID。每条执行前在�
 
 ## 回收与恢复
 
-旧内部移入顺序（当前路由不开放）：核对归档所有权 → 处置／停放已加载会话 → 捕获或复用健康保护快照 → 再核对所有权 → 原子写入 `trashed` → 使缓存失效。普通回收不删除原日志。
+当前路由不创建新的回收记录。旧记录仍可用于恢复、导出与显式清除；旧内部移入路径已移除。
 
 快照 manifest 格式为 `dsh-archived-chats/snapshot` v1；`dsh-archived-chats/snapshot-session` 载荷在有继承元数据时使用 v2，否则保留旧 v1。上限：manifest 4 MiB、session JSON 64 MiB、1,000 个附件、单附件 32 MiB、总计 512 MiB。附件流式校验 SHA-256，恢复写入前逐件复读，不同时驻留全部附件字节。
 
@@ -202,9 +200,9 @@ apply 只接受凭据，不接受调用方增补会话 ID。每条执行前在�
 
 ## 空间、策略与来源关系
 
-`stats` 并发 4 测量会话目录、跳过符号链接，缓存 30 秒；失败只影响对应项。`insights` 仅统计当前回收记录引用的保护快照，与归档／回收会话目录分账；重复附件按已验证 SHA-256 计算，不当作全局可回收空间。
+`stats` 并发 4 测量会话目录、跳过符号链接，缓存 30 秒；失败只影响对应项。
 
-策略模块仅保留兼容代码。四个 `/retention/*` POST 路由统一返回 HTTP 410 `retention-retired`，不修改保存的策略。
+策略模块已移除。四个 `/retention/*` POST 路由统一返回 HTTP 410 `retention-retired`，不读取或修改保存的策略。
 
 
 `lineage` 仅使用持久化 `parentSession` 建树，聚焦官方已归档聊天及其祖先和后代，排除无关分支和空工作区。最多按需读 100 个缺失标题，5,000 节点上限针对实际展示图；不认识的字段仅使相关节点降级。搜索和筛选保留必要祖先，不修改关系。

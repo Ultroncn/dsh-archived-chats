@@ -1,7 +1,7 @@
 /**
  * Host loader entry — registers the `/plugins/dsh-archived-chats/*` routes
  * (about, about/check-updates, about/install-update,
- * state, stats, insights, retention/policy, retention/policy/preview,
+ * state, stats, retention/policy, retention/policy/preview,
  * retention/preview, retention/apply,
  * lineage,
  * workspace-archive/workspaces, workspace-archive/preview,
@@ -10,7 +10,7 @@
  * export, import/inspect, import/restore,
  * metadata, trash, trash/restore, trash/purge, trash/empty, unarchive,
  * unarchive-all, delete, delete-all, orphans, orphans/delete, orphans/export), streams
- * JSON/Markdown backup ZIPs, and wires archive insights:
+ * JSON/Markdown backup ZIPs, and wires archive information:
  * per-session tags/notes joined into `/state`, storage statistics from
  * `/stats`, guarded projected-message reads through `/preview` and `/search`.
  * `/search` optionally accepts `sessionIds: string[]` (0–100 IDs, <=1024 UTF-16
@@ -36,17 +36,14 @@
  * Host can represent its source format without guessing missing boundaries.
  * Archive mutations fail closed while the
  * recycle catalog is unreadable, and `/state` reports `trashStatus` so the
- * listing can be labelled as unverified. Non-permanent delete creates or
- * reuses a verified local protection snapshot and moves the session into the
- * recycle catalog; the UI exposes this only at workspace scope. Guarded
+ * listing can be labelled as unverified. Non-permanent delete returns 410;
+ * old recycle records remain available for recovery and explicit purge. Guarded
  * permanent deletion removes related snapshots before the original session
  * and retains durable intent until all remaining cleanup succeeds.
- * Startup migrates legacy pending deletions into recoverable trash and retries
- * only records carrying durable `purge-pending` intent. Direct permanent
- * deletion creates this intent without capturing a snapshot; its snapshotId
- * is null. It uses the same snapshot/session cleanup and retry path as purge.
- * Startup also removes snapshots not referenced by current recycle records,
- * independently of the optional automatic Recycle Bin retention policy.
+ * Direct permanent deletion creates durable `purge-pending` intent without
+ * capturing a snapshot; its snapshotId is null. It uses the same
+ * snapshot/session cleanup path as legacy purge. Pending tasks require
+ * explicit retry; startup does not sweep snapshots or delete sessions.
  */
 export type RecycleRecordState = 'trashed' | 'purge-pending' | 'degraded';
 export type RecycleLiveDisposition = 'cold' | 'disposed' | 'parked';
@@ -101,78 +98,6 @@ export interface RecyclePurgeTarget {
   snapshotId: string | null;
   bytes: number;
 }
-
-export interface RetentionPolicy {
-  /** Legacy compatibility field; does not schedule historical snapshot cleanup. */
-  historicalSnapshotsPerSession: number;
-  /** Legacy compatibility field; does not schedule historical snapshot cleanup. */
-  historicalSnapshotMaxAgeDays: number | null;
-  /** Legacy compatibility field; does not schedule historical snapshot cleanup. */
-  snapshotQuotaBytes: number | null;
-  recycleMaxAgeDays: number | null;
-  /** Explicit opt-in; legacy policies load as false. */
-  recycleAutoDelete: boolean;
-}
-
-export interface StorageInsightsSummary {
-  sessionBytes: number;
-  snapshotBytes: number;
-  totalMeasuredBytes: number;
-  duplicateSnapshotBytes: number;
-  sessionUnavailableCount: number;
-  degradedSnapshotCount: number;
-}
-
-export interface StorageInsights {
-  generatedAt: string;
-  summary: StorageInsightsSummary;
-  sessions: Array<{
-    id: string;
-    title: string | null;
-    workspaceId: string | null;
-    workspaceTitle: string | null;
-    scope: 'archive' | 'trash';
-    status: 'ready' | 'unavailable';
-    sizeBytes: number | null;
-    fileCount: number | null;
-  }>;
-  snapshots: Array<
-    | {
-      snapshotId: string;
-      sessionId: string;
-      createdAt: string;
-      totalBytes: number;
-      sessionBytes: number;
-      attachmentCount: number;
-      status: 'ready';
-      active: boolean;
-    }
-    | {
-      snapshotId: string;
-      status: 'degraded';
-      code: string;
-      active: boolean;
-    }
-  >;
-  policy: RetentionPolicy;
-  candidateSummary: {
-    snapshotCount: number;
-    recycleCount: number;
-    projectedSnapshotBytes: number;
-  };
-}
-
-export type RetentionCandidate =
-  | {
-    key: string;
-    action: 'purge-trash';
-    reason: 'recycle-age';
-    sessionId: string;
-    state: 'trashed' | 'degraded';
-    trashedAt: string;
-    snapshotId: string | null;
-    bytes: number;
-  };
 
 export type LineageStatus = 'active' | 'archived' | 'trash' | 'missing';
 export type LineageDiagnosticCode = 'missing-parent' | 'self-parent' | 'cycle' | 'delegation-depth-mismatch';

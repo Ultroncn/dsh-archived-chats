@@ -11,7 +11,7 @@ import {apply} from '../lib/index.js';
 import {createSnapshotStore} from '../lib/snapshot.js';
 import {createTrashStore} from '../lib/trash.js';
 import {createMetadataStore} from '../lib/metadata.js';
-import {createRecycleService} from '../lib/recycle.js';
+import {seedLegacyRecord} from './helpers/legacy-recycle-fixture.mjs';
 
 async function fixture(t,{images=false}={}){
  const root=await mkdtemp(join(tmpdir(),'dac-transition-'));const previous=process.env.DSH_HOME;process.env.DSH_HOME=root;
@@ -25,7 +25,7 @@ async function fixture(t,{images=false}={}){
  const persistence={list:async()=>{try{await access(path);return [header]}catch{return []}},inspect:async()=>{await access(path);return {meta:header,events}},locate:()=>({kind:'jsonl',path})};
  const registry={state:{archivedSessionIds:['old-chat']},get archivedSessionIds(){return this.state.archivedSessionIds},list:()=>[],setState:async function(s){this.state=s},unarchiveSession:async function(id){this.state.archivedSessionIds=this.state.archivedSessionIds.filter(x=>x!==id)}};
  const snapshots=createSnapshotStore({root:join(data,'snapshots'),persistence,attachments});const trash=createTrashStore({path:join(data,'trash.json')});const metadata=createMetadataStore({filePath:join(data,'metadata.json')});
- const legacy=createRecycleService({registry,persistence,snapshotStore:snapshots,trashStore:trash,metadataStore:metadata,lifecycle:{run:fn=>fn()},disposeLive:async()=>({disposition:'cold'})});
+ const legacy={seed:async ids=>{for(const sessionId of ids)await seedLegacyRecord({sessionId,persistence,snapshotStore:snapshots,trashStore:trash,metadataStore:metadata});return {trashed:ids,failed:[]}}};
  const routes=new Map(),effects=[];const services={attachments,workspaceRegistry:registry,sessionPersistence:persistence,sessions:{get:()=>undefined},webServer:{register({path,handler}){routes.set(path,handler)}}};
  apply({get:k=>services[k],on(){},logger:{warn(){}},effect(fn,label){effects.push(label);if(!label.includes('automatic'))fn()}});
  async function call(route,body,form=false){const req=new EventEmitter();req.method=body===undefined?'GET':'POST';req.headers={'x-dsh-archived-chats':'1',...(form?{'content-type':'application/x-www-form-urlencoded'}:{})};const res=new PassThrough();let status,headers;res.writeHead=(c,h)=>{status=c;headers=h;return res};const chunks=[];res.on('data',c=>chunks.push(c));const end=once(res,'end');queueMicrotask(()=>{if(body!==undefined)req.emit('data',Buffer.from(form?new URLSearchParams(body).toString():JSON.stringify(body)));req.emit('end')});await routes.get('/plugins/dsh-archived-chats'+route)(req,res);await end;const bytes=Buffer.concat(chunks);return {status,headers,bytes,json:()=>JSON.parse(bytes)}}
@@ -33,8 +33,8 @@ async function fixture(t,{images=false}={}){
 }
 test('retirement rejects new recycle requests without converting them to permanent deletes',async t=>{const f=await fixture(t);for(const [route,body] of [['/delete',{sessionId:'old-chat'}],['/delete-all',{sessionIds:['old-chat']}]] ){const r=await f.call(route,body);assert.equal(r.status,410);assert.equal(r.json().error,'recycle-retired');await access(f.path);assert.equal(await f.trash.get('old-chat'),null)} });
 test('retirement never schedules cleanup and rejects stale policy actions without modifying saved policy',async t=>{const f=await fixture(t);await mkdir(f.data,{recursive:true});const policy='{ "recycleAutoDelete": true }';await writeFile(join(f.data,'retention.json'),policy);assert.ok(!f.effects.some(x=>x.includes('automatic recycle cleanup')));for(const route of ['/retention/policy/preview','/retention/policy','/retention/preview','/retention/apply'])assert.equal((await f.call(route,{})).status,410);assert.equal(await readFile(join(f.data,'retention.json'),'utf8'),policy);await access(f.path)});
-test('old recycle records remain discoverable, exportable and recoverable without auto-migration',async t=>{const f=await fixture(t);assert.deepEqual((await f.legacy.move(['old-chat'])).trashed,['old-chat']);const old=await f.trash.get('old-chat');const listed=await f.call('/trash');assert.equal(listed.json().sessions[0].sessionId,'old-chat');const exported=await f.call('/trash/export',{sessionIds:JSON.stringify(['old-chat'])},true);assert.equal(exported.status,200);const files=unzipSync(exported.bytes);assert.ok(files['manifest.json']);assert.ok(files['session.json']);assert.equal(JSON.parse(Buffer.from(files['session.json'])).source.meta.id,'old-chat');assert.deepEqual(await f.trash.get('old-chat'),old);const restored=await f.call('/trash/restore',{sessionIds:['old-chat']});assert.deepEqual(restored.json().restored,['old-chat']);assert.ok(f.registry.archivedSessionIds.includes('old-chat'));await access(f.path);assert.equal(await f.trash.get('old-chat'),null)});
-test('unsupported missing-original recovery preserves legacy record and exportable snapshot',async t=>{const f=await fixture(t);await f.legacy.move(['old-chat']);const old=await f.trash.get('old-chat');await rm(f.path);const restored=await f.call('/trash/restore',{sessionIds:['old-chat']});assert.equal(restored.status,409);assert.equal(restored.json().failed[0].reason,'snapshot-restore-unsupported');assert.deepEqual(await f.trash.get('old-chat'),old);assert.equal((await f.call('/trash/export',{sessionIds:JSON.stringify(['old-chat'])},true)).status,200)});
+test('old recycle records remain discoverable, exportable and recoverable without auto-migration',async t=>{const f=await fixture(t);assert.deepEqual((await f.legacy.seed(['old-chat'])).trashed,['old-chat']);const old=await f.trash.get('old-chat');const listed=await f.call('/trash');assert.equal(listed.json().sessions[0].sessionId,'old-chat');const exported=await f.call('/trash/export',{sessionIds:JSON.stringify(['old-chat'])},true);assert.equal(exported.status,200);const files=unzipSync(exported.bytes);assert.ok(files['manifest.json']);assert.ok(files['session.json']);assert.equal(JSON.parse(Buffer.from(files['session.json'])).source.meta.id,'old-chat');assert.deepEqual(await f.trash.get('old-chat'),old);const restored=await f.call('/trash/restore',{sessionIds:['old-chat']});assert.deepEqual(restored.json().restored,['old-chat']);assert.ok(f.registry.archivedSessionIds.includes('old-chat'));await access(f.path);assert.equal(await f.trash.get('old-chat'),null)});
+test('unsupported missing-original recovery preserves legacy record and exportable snapshot',async t=>{const f=await fixture(t);await f.legacy.seed(['old-chat']);const old=await f.trash.get('old-chat');await rm(f.path);const restored=await f.call('/trash/restore',{sessionIds:['old-chat']});assert.equal(restored.status,409);assert.equal(restored.json().failed[0].reason,'snapshot-restore-unsupported');assert.deepEqual(await f.trash.get('old-chat'),old);assert.equal((await f.call('/trash/export',{sessionIds:JSON.stringify(['old-chat'])},true)).status,200)});
 test('explicit permanent deletion remains available during retirement',async t=>{const f=await fixture(t);const r=await f.call('/delete-all',{sessionIds:['old-chat'],permanent:true});assert.deepEqual(r.json().deleted,['old-chat']);await assert.rejects(access(f.path),{code:'ENOENT'})});
 
 test('legacy pending-only deletion remains visible for explicit retry without deleting on read', async t => {
@@ -66,7 +66,7 @@ test('legacy pending-only deletion remains visible for explicit retry without de
 
 test('legacy snapshot ZIP preserves exact validated session and image bytes', async t => {
   const f = await fixture(t, { images: true });
-  await f.legacy.move(['old-chat']);
+  await f.legacy.seed(['old-chat']);
   const old = await f.trash.get('old-chat');
   const directory = join(f.data, 'snapshots', old.snapshotId);
   // Earlier snapshots can contain whitespace; reserialization must not invalidate their manifest.
@@ -96,7 +96,7 @@ test('legacy snapshot ZIP preserves exact validated session and image bytes', as
 test('legacy snapshot export refuses missing, multiple and corrupted targets without mutation', async t => {
   const f = await fixture(t);
   assert.equal((await f.call('/trash/export', {sessionIds: JSON.stringify(['old-chat'])}, true)).status, 404);
-  await f.legacy.move(['old-chat']);
+  await f.legacy.seed(['old-chat']);
   const old = await f.trash.get('old-chat');
   assert.equal((await f.call('/trash/export', {sessionIds: JSON.stringify(['old-chat','another'])}, true)).status, 400);
   await writeFile(join(f.data, 'snapshots', old.snapshotId, 'session.json'), 'corrupt');

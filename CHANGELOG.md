@@ -4,6 +4,11 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## Unreleased
+
+- 移除已停用的自动清理、保留策略、空间统计页面及新建回收的运行时代码；保留旧回收记录的恢复／导出、当前永久删除的持久任务与快照清理。旧 `retention.json` 不读取或改写，过时策略请求继续返回 410。
+- Remove retired automatic cleanup, retention-policy and storage-page code, plus the unused new-recycle path. Keep legacy recovery/export and the durable permanent-deletion and snapshot-cleanup paths. Saved policies remain untouched; stale policy writes still return 410.
+
 ## 1.6.3 — 2026-11-05
 
 ### 中文
