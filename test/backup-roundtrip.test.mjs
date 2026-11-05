@@ -30,6 +30,12 @@ const sessionFormatVersion = nativeRoot
   ? (await native('dsh-session')).SESSION_FORMAT_VERSION
   : 3;
 
+async function locateSessionArtifact(persistence, header) {
+  if (typeof persistence.locate === 'function') return persistence.locate(header);
+  const snapshot = await persistence.stat(header.id);
+  return snapshot?.location;
+}
+
 async function smallBackup(id, root) {
   const meta = { version: sessionFormatVersion, id, createdAt: 42, cwd: root, isSeeded: false };
   const events = [{ seq: 0, time: 42, type: 'session/title', data: { title: 'Backup title', messageSeqs: [], source: { kind: 'user' } } }];
@@ -73,7 +79,7 @@ async function fixture(t, { projections = false } = {}) {
     ctx.provide('storageDomain', domain);
     ctx.provide('sessions', { get() { throw new Error('cold restore must not activate sessions'); } });
     const registry = new Projections(ctx);
-    registry.register(titleProjectionDefinition);
+    await registry.register(titleProjectionDefinition);
     cache = new Cache(ctx, { writeEveryEvents: 10, writeIntervalMs: 1000 });
     await cache[Service.init]();
     t.after(async () => { await domain.closeAll(); await backend.close(); });
@@ -313,7 +319,7 @@ test('official modern backend: purge and empty succeed with compressed historica
   const paths = new Map();
   for (const id of [oldId, mixedId, currentId, directId]) {
     const meta = { version: sessionFormatVersion, id, createdAt: 42, cwd: f.root, isSeeded: false, delegationDepth: 0 };
-    const path = f.raw.locate(meta).path;
+    const path = (await locateSessionArtifact(f.raw, meta)).path;
     paths.set(id, path);
     if (id !== oldId) {
       const handle = await f.raw.create(meta);
@@ -329,7 +335,7 @@ test('official modern backend: purge and empty succeed with compressed historica
   }
   const inventory = await f.raw.list();
   assert.equal(inventory.length, 4, 'real Host inventory includes historical and current sessions');
-  assert.equal(f.raw.locate(inventory.find(item => item.header.id === oldId).header).path, paths.get(oldId));
+  assert.equal((await locateSessionArtifact(f.raw, inventory.find(item => item.header.id === oldId).header)).path, paths.get(oldId));
   await assert.rejects(access(paths.get(oldId)), { code: 'ENOENT' });
   const historicalPath = join(dirname(paths.get(oldId)), 'session.v3.jsonl.zstd');
   const historicalBytes = await readFile(historicalPath);
