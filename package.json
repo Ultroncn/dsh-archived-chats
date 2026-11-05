@@ -1,6 +1,6 @@
 {
   "name": "dsh-archived-chats",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "查看、搜索和管理会话归档，支持工作区批量归档、标签备注、ZIP 备份和手动残留会话检查。",
   "license": "MIT",
   "author": "Ultronen",
