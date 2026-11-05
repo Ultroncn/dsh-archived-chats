@@ -101,7 +101,7 @@ dsh plugin --profile web update dsh-archived-chats
 
 ## 兼容性
 
-声明范围为 DSH `>=0.1.0-rc.7`，具体能力仍取决于 Host。原生测试使用锁定的 `0.1.7-rc.2`、`0.2.1-rc.2` 与 `0.2.1-rc.5` 后端，发布 CI 覆盖 macOS、Windows 和 Linux。
+声明范围为 DSH `>=0.1.0-rc.7 || 0.2.2-rc.1`，具体能力仍取决于 Host。原生集成测试覆盖官方 `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 与 `0.2.2-rc.1` 后端；CI 在 macOS、Windows 和 Linux 上运行 Host 测试矩阵。
 
 归档、取消归档、列表读取以官方能力为基础。永久删除由插件协调会话生命周期和存储位置完成，并非调用一个官方统一删除接口；ZIP 导入和旧快照恢复的写入能力要求也不同。详见[兼容性与限制](docs/USER_GUIDE.zh-CN.md#兼容性与限制)。
 
@@ -139,6 +139,8 @@ npm ci --prefix test/fixtures/native-host-0.2.1 --ignore-scripts --include=optio
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1
 npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
+npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --include=optional --package-lock=true
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm pack --dry-run --json
 ```
 

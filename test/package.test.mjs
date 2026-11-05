@@ -127,12 +127,12 @@ test('architecture route inventory parser accepts LF and CRLF documents', () => 
 });
 
 test('package declares a capability range and the tested Host fixture separately', () => {
-  assert.equal(packageManifest.dsh?.engines?.dsh, '>=0.1.0-rc.7');
+  assert.equal(packageManifest.dsh?.engines?.dsh, '>=0.1.0-rc.7 || 0.2.2-rc.1');
   assert.equal(packageManifest.dependencies?.['@deepseek-ai/dsh-session'], undefined);
   assert.equal(packageManifest.devDependencies?.['@deepseek-ai/dsh-session'], '0.1.7-rc.2');
   assert.equal(
     packageManifest.peerDependencies?.['@deepseek-ai/dsh-session'],
-    '>=0.1.0-rc.7 <0.1.1-0 || >=0.1.1-rc.1 <0.1.2-0 || >=0.1.2-alpha.1 <0.2.0-0 || 0.1.5-rc.2 || 0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.2 || 0.2.1-rc.5',
+    '>=0.1.0-rc.7 <0.1.1-0 || >=0.1.1-rc.1 <0.1.2-0 || >=0.1.2-alpha.1 <0.2.0-0 || 0.1.5-rc.2 || 0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1',
   );
   assert.equal(packageManifest.peerDependenciesMeta?.['@deepseek-ai/dsh-session']?.optional, true);
 });
@@ -158,7 +158,7 @@ test('runtime dependencies stay free of the builtin-slash resolution chain', () 
   }
 });
 
-for (const hostVersion of ['0.1.7-rc.2', '0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5']) {
+for (const hostVersion of ['0.1.7-rc.2', '0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5', '0.2.2-rc.1']) {
   test(`packed artifact resolves normally beside Host ${hostVersion}`, () => {
     const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const fixture = mkdtempSync(join(tmpdir(), 'dac-peer-resolution-'));
