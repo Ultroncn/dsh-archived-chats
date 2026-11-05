@@ -141,6 +141,8 @@ npm ci --prefix test/fixtures/native-host-0.2.1 --ignore-scripts --include=optio
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1
 npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
+npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --include=optional --package-lock=true
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm pack --dry-run --json
 ```
 
