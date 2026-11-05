@@ -4,7 +4,7 @@
 
 English · [中文](ARCHITECTURE.md) · [User guide](USER_GUIDE.md)
 
-This document describes the interfaces and behavior of 1.6.1. Native integration tests cover DSH `0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
+This document describes the interfaces and behavior of 1.6.3. Native integration tests cover DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
 
 ## Product boundary and modules
 

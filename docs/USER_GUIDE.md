@@ -4,7 +4,7 @@ Version 1.6.0 disables new recycle operations and automatic cleanup while retain
 
 English · [简体中文](USER_GUIDE.zh-CN.md) · [Back to README](../README.md)
 
-Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes 1.6.1, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
+Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes 1.6.3, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
 
 ## Chat states and legacy data
 

@@ -4,6 +4,20 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 1.6.3 — 2026-11-05
+
+### 中文
+
+- 将开发依赖及四套官方 Host 测试环境中的 Zod 统一更新至 `4.6.7`，消除高危依赖告警 [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)。
+- 对精确依赖旧版 Zod 的 Host 测试夹具添加局部 `overrides`，保留官方 Host 版本；同步锁文件，避免独立安装测试夹具时重新引入受影响版本。
+- 本次为开发与测试依赖维护，不改动插件运行时代码、数据格式或 Host 兼容范围；插件发布包不包含 Zod。
+
+### English
+
+- Update Zod to `4.6.7` in development dependencies and all four official Host test environments to resolve high-severity advisory [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
+- Add fixture-local overrides where official Host packages pin older Zod versions, retaining the Host versions and updating lockfiles so independent fixture installations use the patched dependency.
+- This is a development and test dependency maintenance release. Plugin runtime code, data formats and Host compatibility ranges are unchanged; Zod is not included in the published plugin package.
+
 ## 1.6.2 — 2026-11-05
 
 ### 中文
