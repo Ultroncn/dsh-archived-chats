@@ -3618,7 +3618,7 @@ console.log('\n[updates] recurring checks and reviewed installation');
     stop(); assert(events.size === 0 && !timers.has(next), 'unmount removes listeners and pending timers');
   }
 }
-{
+for (const application of ['restart-required', 'applied']) {
   const savedHooks = { ...moduleTable.react }, savedFetch = globalThis.fetch;
   const t = clientCtx.locale.bind('settings.archived-chats');
   const requests = []; let complete;
@@ -3630,7 +3630,7 @@ console.log('\n[updates] recurring checks and reviewed installation');
     requests.push({ path, options });
     if (path.endsWith('/about/install-update')) {
       await new Promise(resolve => { complete = resolve; });
-      return { ok: true, json: async () => ({ ...info, install: { status: 'restart-required', version: '1.4.0' } }) };
+      return { ok: true, json: async () => ({ ...info, install: { status: application, version: '1.4.0' } }) };
     }
     return { ok: true, json: async () => path.includes('/about') ? info : { sessions: [], deletionStatus: 'ready', metadataStatus: 'ready' } };
   };
@@ -3646,9 +3646,22 @@ console.log('\n[updates] recurring checks and reviewed installation');
   assert(requests.filter(r => r.path.endsWith('/about/install-update')).length === 1, 'duplicate update clicks submit once');
   complete?.(); await Promise.all([first, second]);
   modal = findComponentElement(render(), 'UpdateDialog');
-  assert(modal?.props.about.install.status === 'restart-required' && modal.props.about.version === '1.3.3', 'installed and running versions remain distinct');
+  assert(modal?.props.about.install.status === application && modal.props.about.version === '1.3.3', 'installed and running versions remain distinct');
   assert(requests.find(r => r.path.endsWith('/about/install-update'))?.options.body === '{"version":"1.4.0"}', 'only the reviewed version is sent');
   harness.unmount(); globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
+}
+
+{
+  const savedHooks = { ...moduleTable.react };
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  const about = { version: '1.3.3', links: {}, update: { status: 'available', latestVersion: '1.4.0' },
+    installation: { source: 'registry', environment: 'desktop', canInstall: true }, install: { status: 'applied', version: '1.4.0' } };
+  const harness = createHookHarness(clientExports.__test.UpdateDialog);
+  const tree = harness.render({ t, about, onClose() {}, onCheck() {}, onInstall() {} });
+  assert(tree.props.hideConfirm === true && elementText(tree).includes('宿主已应用 v1.4.0'),
+    'Host-applied updates hide repeat installation and report their actual outcome');
+  assert(!elementText(tree).includes('已安装，请重启'), 'an applied update does not invent a restart requirement');
+  harness.unmount(); Object.assign(moduleTable.react, savedHooks);
 }
 
 {

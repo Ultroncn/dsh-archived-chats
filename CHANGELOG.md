@@ -4,6 +4,18 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 1.7.1 — 2026-11-07
+
+### 中文
+
+- 插件更新优先接入官方 `updateBundle`，支持宿主热重载环境中的版本替换，由官方管理兼容性检查、安装和失败恢复。
+- 更新结果区分已应用与需要重启，并明确提示旧版恢复结果。更新指引优先引导官方插件页的版本区域，保留旧 Host 兼容和本地开发版保护。
+
+### English
+
+- Prefer the official `updateBundle` API for plugin updates, including Host hot-reload environments. The Host manages compatibility checks, replacement and recovery after failure.
+- Distinguish applied updates from required restarts and report verified restoration outcomes. Direct manual guidance to the official Plugins page’s Versions section, retaining older Host compatibility and local-checkout protection.
+
 ## 1.7.0 — 2026-11-07
 
 ### 中文

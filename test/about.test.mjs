@@ -60,6 +60,74 @@ function response(body, overrides = {}) {
   };
 }
 
+test('official updateBundle replaces a registry plugin with HMR and verifies either application result', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'archive-official-update-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const root = join(dir, 'node_modules', 'dsh-archived-chats');
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { 'dsh-archived-chats': '1.3.3' } }));
+  const calls = [];
+  let application = 'applied';
+  const services = { profileContext: { name: 'desktop', dir }, hmr: {}, pluginManager: {
+    async updateBundle(name, version, options) {
+      calls.push({ name, version, options });
+      writeFileSync(join(root, 'package.json'), JSON.stringify({ name, version }));
+      return { from: '1.3.3', to: version, step: 'install', result: { application, bundle: name, version } };
+    },
+    async installBundle() { assert.fail('the official update API must own replacement'); },
+  } };
+  const runtime = aboutModule.createUpdateRuntime({ get: name => services[name] }, { packageRoot: root });
+  assert.equal(runtime.describe('1.4.0').canInstall, true);
+  for (application of ['applied', 'restart-required']) {
+    assert.deepEqual(await runtime.install('1.4.0'), { application });
+  }
+  assert.deepEqual(calls[0], { name: 'dsh-archived-chats', version: '1.4.0', options: { registry: 'https://registry.npmjs.org/' } });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { 'dsh-archived-chats': 'link:../source' } }));
+  await assert.rejects(runtime.install('1.4.0'), { code: 'update-local-install' });
+  assert.equal(calls.length, 2);
+});
+
+test('official update failures distinguish verified rollback and never claim an unverified installation', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'archive-update-failure-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const root = join(dir, 'node_modules', 'dsh-archived-chats');
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { 'dsh-archived-chats': '1.3.3' } }));
+  const save = version => writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'dsh-archived-chats', version }));
+  save('1.3.3');
+  let result;
+  const runtime = aboutModule.createUpdateRuntime({ get: name => ({
+    profileContext: { name: 'desktop', dir }, hmr: {},
+    pluginManager: { updateBundle: async () => result },
+  })[name] }, { packageRoot: root });
+  for (const step of ['check', 'remove']) {
+    result = { from: '1.3.3', to: '1.4.0', step, result: { application: 'failed' } };
+    await assert.rejects(runtime.install('1.4.0'), { code: 'update-install-failed' });
+  }
+  result = { from: '1.3.3', to: '1.4.0', step: 'install', result: { application: 'failed' },
+    restore: { application: 'applied', bundle: 'dsh-archived-chats', version: '1.3.3' } };
+  await assert.rejects(runtime.install('1.4.0'), { code: 'update-restored' });
+  result.restore.application = 'failed';
+  await assert.rejects(runtime.install('1.4.0'), { code: 'update-restore-failed' });
+  result = { from: '1.3.3', to: '1.4.0', step: 'install', result: { application: 'applied', bundle: 'dsh-archived-chats', version: '1.4.0' } };
+  await assert.rejects(runtime.install('1.4.0'), { code: 'update-install-unverified' });
+  save('1.4.0');
+  result.to = '1.5.0';
+  await assert.rejects(runtime.install('1.4.0'), { code: 'update-install-failed' });
+});
+
+test('Host-applied updates keep their actual outcome instead of requiring a restart', async () => {
+  const service = createAboutService({ version: '1.3.3', runtime: {
+    describe: () => ({ source: 'registry', canInstall: true }),
+    install: async () => ({ application: 'applied' }),
+  }, fetchImpl: async () => response({ name: 'dsh-archived-chats', version: '1.4.0' }) });
+  await service.checkUpdates({ force: false });
+  const result = await service.installUpdate({ version: '1.4.0' });
+  assert.equal(result.install.status, 'applied');
+  assert.equal(result.version, '1.3.3');
+  await assert.rejects(service.installUpdate({ version: '1.4.0' }), { code: 'update-already-applied' });
+});
+
 test('about exposes package identity, trusted links, and an unchecked initial state without fetching', () => {
   let fetchCalls = 0;
   const service = createAboutService({

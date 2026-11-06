@@ -35,7 +35,7 @@ Archive Management adds conversation search, organization and backups to DeepSee
 - **Portable backups:** export and import JSON + Markdown ZIPs; imports preview before writing and skip existing IDs to avoid overwrites.
 - **Conversation lineage:** read-only Origins & Branches view traces sources, forks and subagent relationships across all workspaces, including archived and unarchived chats.
 
-> This document describes version 1.7.0. Previous recovery features are removed, with explicit retries for permanent-deletion tasks.
+> This document describes version 1.7.1. Previous recovery features are removed, with explicit retries for permanent-deletion tasks.
 
 ## Install and open
 
