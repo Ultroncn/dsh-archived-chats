@@ -4,6 +4,18 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 2.0.0 — 2026-11-07
+
+### 中文
+
+- 最低宿主版本提高至 DeepSeek Harness `0.2.2-rc.1`。旧宿主请先升级 Harness，再安装新版插件；暂不升级宿主时可继续使用插件 `1.7.1`。
+- 同步官方 Session 与 Cordis 开发基线，原生集成 CI 统一使用官方 `0.2.2-rc.1` 后端，在 macOS、Windows 和 Linux 上验证。更新兼容声明、安装指引和市场信息。
+
+### English
+
+- Raise the minimum Host version to DeepSeek Harness `0.2.2-rc.1`. Upgrade Harness before installing this plugin release on older Hosts, or keep plugin `1.7.1` until the Host is upgraded.
+- Align official Session and Cordis development dependencies. Run native integration CI against the official `0.2.2-rc.1` backend on macOS, Windows and Linux, with matching compatibility declarations, installation guidance and catalog information.
+
 ## 1.7.1 — 2026-11-07
 
 ### 中文
