@@ -4,7 +4,7 @@ Current source removes the previous recovery UI and keeps explicit permanent-del
 
 English · [简体中文](USER_GUIDE.zh-CN.md) · [Back to README](../README.md)
 
-Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 1.7.0, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
+Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 2.0.0, with native integration coverage for DSH `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
 
 Archive Management prefers the Host’s public Modal, Button, Input, menu, Tooltip, and icon components. Search fields follow the built-in plugin inventory’s 36px height, search icon, and focus styles. Ordinary text fields use the public Input. Confirmations use the official heading, description, and action areas. Complex preview and import content use the official modal frame. Older Hosts without these exports use compatible controls. Page headings, descriptions, secondary list text, and focus states follow the official settings typography and theme variables.
 
@@ -191,6 +191,8 @@ Local link:/file: installations are labeled Local checkout, offer Copy local pat
 
 ## Upgrades
 
+Version 2.0.0 requires DeepSeek Harness `0.2.2-rc.1` or later. Upgrade Harness before updating the plugin on older Hosts, or keep plugin `1.7.1`. The official update API checks compatibility before replacing the plugin and rejects incompatible versions.
+
 Upgrades preserve archives, tags, notes, and pending permanent-deletion tasks. Previous recovery records and protection snapshots remain on disk without the previous recovery actions. Host compatibility follows the package declaration and native integration coverage.
 
 ## Compatibility and limits
@@ -199,7 +201,7 @@ Upgrades preserve archives, tags, notes, and pending permanent-deletion tasks. P
 
 Features depend on public Host capabilities, not just a version number:
 
-The declared DSH `>=0.1.0-rc.7` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all three pinned official Host backends, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5` (nine integration cases each) and package checks, including the v4 session format.
+Requires DSH `0.2.2-rc.1` or later, declared as `>=0.2.2-rc.1`. Release automation runs unit tests on Node.js 18 on Ubuntu and requires all nine integration cases against the official `0.2.2-rc.1` backend on Node.js 24 on Ubuntu, macOS and Windows, plus package checks.
 
 ## Local data and uninstall
 

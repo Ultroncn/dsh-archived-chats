@@ -2,7 +2,7 @@
 
 English · [中文](ARCHITECTURE.md) · [User guide](USER_GUIDE.md)
 
-This document describes the interfaces and behavior of version 1.7.0. Native integration tests cover DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
+This document describes the interfaces and behavior of version 2.0.0. Native integration tests cover DSH `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
 
 The client capability-detects public UI primitives. `HostModal` uses the official headless Modal for complex business content. Ordinary `ConfirmDialog` uses its heading, description and footer. `ControlButton` and `ControlInput` forward refs, disabled state and editing events. Older Hosts retain HTML fallbacks. Native controls use separate styling classes so legacy button CSS cannot override their sizing, colors or hover states. Menus retain filter placement and scrolling constraints; preview content stays within the outer modal bounds. Native modals own focus layering, with document-level legacy traps registered only in compatibility mode. Plugin-owned portals belong to the archive interaction so clicks inside a dialog cannot prematurely release settings protection.
 
@@ -175,16 +175,12 @@ Tests cover retained modules: export/import rollback, deletion-task states, inte
 
 ```sh
 npm test
-npm ci --prefix test/fixtures/native-host --ignore-scripts --include=optional
-node scripts/run-native-integration.mjs
-npm ci --prefix test/fixtures/native-host-0.2.1 --ignore-scripts --include=optional
-node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1
-npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=optional
-node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
+npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --include=optional --package-lock=true
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm pack --dry-run --json
 git diff --check
 ```
 
-The native commands install the locked `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5` fixtures and require all nine native integration cases to run without skips for each fixture. This is the local equivalent of the mandatory native Host integration gate in CI.
+The native commands install the exact official `0.2.2-rc.1` fixture and require all nine integration cases to run without skips, matching the mandatory Host integration gate in CI.
 
-The declared DSH `>=0.1.0-rc.7` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all three official Host backend fixtures, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2` and `0.2.1-rc.5`, on all three platforms (9/9 each), along with package checks, including the v4 session format. The [screenshots](../screenshots.json) show the current interface with synthetic example chats.
+Requires DSH `0.2.2-rc.1` or later, declared as `>=0.2.2-rc.1`. Release automation runs unit tests on Node.js 18 on Ubuntu and requires all nine integration cases against the official `0.2.2-rc.1` backend on Node.js 24 on Ubuntu, macOS and Windows, plus package checks. The [screenshots](../screenshots.json) show the current interface with synthetic example chats.
