@@ -30,9 +30,10 @@
 
 Archive Management adds conversation search, organization and backups to DeepSeek Harness. Find a past solution, preview its context, archive by workspace, or save a ZIP before deleting a chat.
 
-- **Find past work:** search titles, messages, tool results, tags and notes; open a match with surrounding context.
+- **Deep search:** search titles, message bodies, tool results, tags and notes across archived chats; results show the matching turn in context with a direct link to jump there.
 - **Organize chats:** manage Archived and Unarchived, including workspace groups, ungrouped chats, bulk actions, tags and notes.
-- **Keep a backup:** export JSON + Markdown ZIPs; preview imports and skip existing IDs instead of overwriting them.
+- **Portable backups:** export and import JSON + Markdown ZIPs; imports preview before writing and skip existing IDs to avoid overwrites.
+- **Conversation lineage:** read-only Origins & Branches view traces sources, forks and subagent relationships for any archived chat.
 
 > This document describes 1.6.4. New recycle operations and automatic cleanup are retired; see [upgrading](#upgrading-from-older-releases) for existing data.
 

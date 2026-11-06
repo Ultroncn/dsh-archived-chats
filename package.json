@@ -17,15 +17,17 @@
     "dsh",
     "dsh-plugin",
     "archive",
-    "backup",
-    "recycle-bin",
-    "snapshot",
-    "session-lineage",
     "full-text-search",
-    "local-first",
+    "lineage",
+    "fork",
+    "backup",
     "conversation-search",
+    "session-lineage",
+    "local-first",
     "sessions",
-    "web-ui"
+    "web-ui",
+    "recycle-bin",
+    "snapshot"
   ],
   "type": "module",
   "scripts": {
