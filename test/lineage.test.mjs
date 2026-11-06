@@ -11,7 +11,7 @@ test('lineage projects parentSession edges and preserves ancestors for missing p
       { id: 'orphan', createdAt: 4, parentSession: 'missing' },
     ],
     archivedIds: ['fork'],
-    trashRecords: new Map([['agent', { sessionId: 'agent' }]]),
+
     workspaces: [],
     titles: new Map([['root', 'Root']]),
   });
@@ -19,7 +19,7 @@ test('lineage projects parentSession edges and preserves ancestors for missing p
   assert.deepEqual(graph.roots.map((node) => node.id), ['root', 'missing']);
   assert.equal(graph.roots[0].children[0].id, 'fork');
   assert.equal(graph.roots[0].children[0].status, 'archived');
-  assert.equal(graph.roots[0].children[0].children[0].status, 'trash');
+  assert.equal(graph.roots[0].children[0].children[0].status, 'active');
   assert.equal(graph.roots[1].status, 'missing');
   assert.deepEqual(graph.roots[1].children.map((node) => node.id), ['orphan']);
   assert.deepEqual(graph.diagnostics, [
@@ -38,7 +38,7 @@ test('lineage reports self links, cycles, and subagent depth mismatches without 
       { id: 'child', createdAt: 5, parentSession: 'parent', origin: 'subagent', delegationDepth: 1 },
     ],
     archivedIds: [],
-    trashRecords: new Map(),
+
     workspaces: [],
     titles: new Map(),
   });
@@ -53,19 +53,19 @@ test('lineage reports self links, cycles, and subagent depth mismatches without 
   ]);
 });
 
-test('lineage applies trash then archive status and strips private fields', () => {
+test('lineage applies official archive status and strips private fields', () => {
   const graph = projectLineage({
     headers: [
       { id: 'a', createdAt: 1, cwd: '/secret', events: ['private'], note: 'private' },
       { id: 'b', createdAt: 2, parentSession: 'a', origin: 'subagent', delegationDepth: 1 },
     ],
     archivedIds: ['a', 'b'],
-    trashRecords: new Map([['b', { sessionId: 'b', note: 'secret' }]]),
+
     workspaces: [{ id: 'w', title: 'Work', path: '/secret/work', sessionIds: new Set(['a', 'b']) }],
     titles: new Map([['a', 'Alpha'], ['b', 'Beta']]),
   });
   assert.equal(graph.roots[0].status, 'archived');
-  assert.equal(graph.roots[0].children[0].status, 'trash');
+  assert.equal(graph.roots[0].children[0].status, 'archived');
   assert.deepEqual(graph.roots[0].workspace, { id: 'w', title: 'Work' });
   const text = JSON.stringify(graph);
   for (const field of ['cwd', 'path', 'events', 'note', 'tags', 'attachments']) {
@@ -85,7 +85,7 @@ test('lineage focus includes archived descendants and ancestors but excludes unr
       { id: 'unrelated-root', createdAt: 7 },
     ],
     archivedIds: ['archived', 'archived-grandchild'],
-    trashRecords: new Map(),
+
     workspaces: [],
     titles: new Map(),
     focusIds: ['archived', 'archived-grandchild'],
@@ -101,11 +101,11 @@ test('lineage focus includes archived descendants and ancestors but excludes unr
   assert.equal(graph.nodeCount, 5);
 });
 
-test('lineage focus is empty without archived or recycled sessions', () => {
+test('lineage focus is empty without focused sessions', () => {
   const graph = projectLineage({
     headers: [{ id: 'active-only', createdAt: 1 }],
     archivedIds: [],
-    trashRecords: new Map(),
+
     workspaces: [],
     titles: new Map(),
     focusIds: [],
@@ -114,36 +114,12 @@ test('lineage focus is empty without archived or recycled sessions', () => {
   assert.deepEqual(graph, { roots: [], diagnostics: [], nodeCount: 0 });
 });
 
-test('lineage focus still represents a recycled session whose original header is gone', () => {
-  const graph = projectLineage({
-    headers: [{ id: 'active-only', createdAt: 1 }],
-    archivedIds: [],
-    trashRecords: new Map([['recycled', {
-      sessionId: 'recycled',
-      title: 'Recovered from snapshot',
-      createdAt: 2,
-      origin: 'host-private-origin',
-      workspace: { id: 'workspace-a', title: 'Workspace A', path: '/private' },
-    }]]),
-    workspaces: [],
-    titles: new Map(),
-    focusIds: ['recycled'],
-  });
 
-  assert.deepEqual(graph.roots.map((node) => ({ id: node.id, title: node.title, status: node.status })), [
-    { id: 'recycled', title: 'Recovered from snapshot', status: 'trash' },
-  ]);
-  assert.deepEqual(graph.roots[0].workspace, { id: 'workspace-a', title: 'Workspace A' });
-  assert.equal(graph.roots[0].origin, null);
-  assert.equal(JSON.stringify(graph).includes('/private'), false);
-  assert.equal(JSON.stringify(graph).includes('host-private-origin'), false);
-  assert.equal(graph.nodeCount, 1);
-});
 
 test('lineage rejects more than five thousand real headers without a partial graph', () => {
   const headers = Array.from({ length: 5001 }, (_, index) => ({ id: `s-${index}`, createdAt: index }));
   assert.throws(
-    () => projectLineage({ headers, archivedIds: [], trashRecords: new Map(), workspaces: [], titles: new Map() }),
+    () => projectLineage({ headers, archivedIds: [],  workspaces: [], titles: new Map() }),
     (error) => error instanceof LineageError && error.code === 'lineage-limit-exceeded' && error.status === 413,
   );
 });
@@ -154,7 +130,7 @@ test('lineage projects a valid five-thousand-node chain without recursion overfl
     createdAt: index,
     ...(index === 0 ? {} : { parentSession: `s-${index - 1}`, seedLength: index }),
   }));
-  const graph = projectLineage({ headers, archivedIds: [], trashRecords: new Map(), workspaces: [], titles: new Map() });
+  const graph = projectLineage({ headers, archivedIds: [],  workspaces: [], titles: new Map() });
   assert.equal(graph.nodeCount, 5000);
   let node = graph.roots[0];
   for (let index = 1; index < 5000; index += 1) node = node.children[0];
@@ -169,7 +145,7 @@ test('reverse-ordered over-limit lineage chains fail with the stable typed limit
       ...(index === 0 ? {} : { parentSession: `reverse-${index - 1}` }),
     })).reverse();
     assert.throws(
-      () => projectLineage({ headers, archivedIds: [], trashRecords: new Map(), workspaces: [], titles: new Map() }),
+      () => projectLineage({ headers, archivedIds: [],  workspaces: [], titles: new Map() }),
       (error) => error instanceof LineageError
         && error.code === 'lineage-limit-exceeded'
         && error.status === 413,
@@ -199,7 +175,7 @@ test('one unrecognized header degrades its own node instead of the whole graph',
     const graph = projectLineage({
       headers: [base('s-1'), header],
       archivedIds: ['s-1', 's-2'],
-      trashRecords: new Map(),
+
       workspaces: [],
       titles: new Map(),
     });
@@ -223,7 +199,7 @@ test('an unusable identity is dropped and a repeated id keeps the first header',
       { createdAt: 4000 },
     ],
     archivedIds: ['s-1'],
-    trashRecords: new Map(),
+
     workspaces: [],
     titles: new Map(),
   });
@@ -234,32 +210,28 @@ test('an unusable identity is dropped and a repeated id keeps the first header',
   assert.equal(graph.roots[0].createdAt, 1000);
 });
 
-test('a malformed workspace or recycle record never fails the graph', () => {
+test('a malformed workspace never fails the graph', () => {
   const graph = projectLineage({
     headers: [{ id: 's-1', createdAt: 1000 }],
     archivedIds: ['s-1'],
-    trashRecords: new Map([
-      ['s-2', { sessionId: 's-2', title: 'recycled', createdAt: 2000 }],
-      ['s-3', { sessionId: 'does-not-match', title: 'bogus' }],
-      ['s-4', null],
-    ]),
+
     workspaces: [null, 'not-an-object', { id: 'ws-1', title: 'Project', sessionIds: ['s-1'] }],
     titles: new Map(),
   });
-  assert.deepEqual(graph.roots.map((node) => node.id).sort(), ['s-1', 's-2']);
+  assert.deepEqual(graph.roots.map((node) => node.id).sort(), ['s-1']);
   assert.deepEqual(graph.roots.find((node) => node.id === 's-1').workspace, { id: 'ws-1', title: 'Project' });
 });
 
 /**
  * The limit bounds the graph that is RETURNED. `focusIds` narrows the output to
- * the archived and recycled chats plus their explaining context, so the size of
+ * the archived and related chats plus their explaining context, so the size of
  * the Host's store is not what decides whether the panel works.
  */
 test('the node limit counts the projected graph, not how many sessions the Host stores', () => {
   const headers = Array.from({ length: 20000 }, (_, index) => ({ id: `s-${index}`, createdAt: 1000 + index }));
   const focus = ['s-0', 's-1', 's-2'];
   const graph = projectLineage({
-    headers, archivedIds: focus, trashRecords: new Map(), workspaces: [], titles: new Map(), focusIds: focus,
+    headers, archivedIds: focus,  workspaces: [], titles: new Map(), focusIds: focus,
   });
   assert.equal(graph.nodeCount, 3);
   assert.deepEqual(graph.roots.map((node) => node.id), focus);
@@ -272,7 +244,7 @@ test('the node limit counts the projected graph, not how many sessions the Host 
   }));
   assert.throws(
     () => projectLineage({
-      headers: chain, archivedIds: ['c-5000'], trashRecords: new Map(), workspaces: [], titles: new Map(), focusIds: ['c-5000'],
+      headers: chain, archivedIds: ['c-5000'],  workspaces: [], titles: new Map(), focusIds: ['c-5000'],
     }),
     (error) => error instanceof LineageError && error.code === 'lineage-limit-exceeded' && error.status === 413,
   );
@@ -299,4 +271,28 @@ test('legacy lineage seed counts are compatible while unknown lineage stays unkn
   assert.equal(graph.roots.find(n => n.id === 'legacy').isSeeded, true);
   assert.equal(graph.roots.find(n => n.id === 'legacy').seedLength, 3);
   assert.equal(graph.roots.find(n => n.id === 'unknown').isSeeded, null);
+});
+
+test('full-family focus retains related siblings and excludes unrelated related families', () => {
+  const headers = [
+    { id: 'related-root', createdAt: 1 },
+    { id: 'active-child', createdAt: 2, parentSession: 'related-root' },
+    { id: 'related-sibling', createdAt: 3, parentSession: 'related-root' },
+    { id: 'independent-related', createdAt: 4 },
+  ];
+  const graph = projectLineage({
+    headers,
+
+    focusIds: ['active-child'],
+    includeFamilies: true,
+    maxNodes: 3,
+  });
+  assert.equal(graph.nodeCount, 3);
+  assert.deepEqual(graph.roots.map(node => node.id), ['related-root']);
+  assert.deepEqual(graph.roots[0].children.map(node => [node.id, node.status]), [
+    ['active-child', 'active'], ['related-sibling', 'active'],
+  ]);
+  assert.throws(() => projectLineage({ headers, focusIds: ['active-child'], includeFamilies: true, maxNodes: 2 }),
+    error => error.code === 'lineage-limit-exceeded');
+  assert.equal(headers[1].parentSession, 'related-root');
 });

@@ -1,7 +1,7 @@
 {
   "name": "dsh-archived-chats",
-  "version": "1.6.4",
-  "description": "查看、搜索和管理会话归档，支持工作区批量归档、标签备注、ZIP 备份和手动残留会话检查。",
+  "version": "1.7.0",
+  "description": "查看、搜索和管理会话归档，支持工作区批量归档、标签备注、ZIP 备份和会话谱系。",
   "license": "MIT",
   "author": "Ultronen",
   "repository": {
@@ -25,9 +25,7 @@
     "session-lineage",
     "local-first",
     "sessions",
-    "web-ui",
-    "recycle-bin",
-    "snapshot"
+    "web-ui"
   ],
   "type": "module",
   "scripts": {
@@ -48,18 +46,18 @@
   "files": [
     "screenshots.json",
     "lib/index.js",
+    "lib/deletion.js",
+    "lib/deletion-tasks.js",
     "lib/about.js",
     "lib/client.js",
-    "lib/trash.js",
-    "lib/snapshot.js",
     "lib/export.js",
     "lib/import.js",
     "lib/metadata.js",
     "lib/durable.js",
     "lib/restore.js",
-    "lib/recycle.js",
     "lib/deletion-safety.js",
     "lib/lineage.js",
+    "lib/fork-provenance.js",
     "lib/session-graph.js",
     "lib/workspace-bulk-archive.js",
     "lib/session-filters.js",

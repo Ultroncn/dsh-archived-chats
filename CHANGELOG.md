@@ -4,6 +4,24 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 1.7.0 — 2026-11-07
+
+### 中文
+
+- 来源与分支按工作区展示会话列表，提供基础信息及会话谱系入口。谱系图展示完整来源、同级分叉与子智能体关系，支持拖动、缩放、适应画布和只读预览。
+- 通过官方分叉调用记录新分支来源，并按会话身份校验记录。归档与未归档各自搜索标题和正文，类型筛选使用统一菜单。
+- 统一单条、工作区及批量永久删除的范围预览与确认。删除关联子智能体并保留独立分叉，失败后可重试已确认范围。
+- 移除旧回收记录恢复、保护快照及残留会话维护入口和专用接口。升级保留磁盘上的旧文件，并承接已确认的待删除任务。
+- 对齐官方菜单、按钮和顶部标签的样式，保留黑色选中状态，统一工作区悬停交互与默认工作区翻译。官方归档提示增加快速查看入口。
+
+### English
+
+- Organize Origins & branches as workspace-grouped chat lists with basic metadata and a Conversation lineage action. The graph shows the complete source family, sibling forks and subagents, with panning, zooming, fit and read-only previews.
+- Record new fork sources through the official fork call and validate stored session identities. Archived and Unarchived each search their own titles and content, with shared type-filter menus.
+- Unify scope previews and confirmation for individual, workspace and bulk permanent deletion. Include related subagents, preserve independent forks and retry the previously confirmed scope after failures.
+- Remove legacy recovery, protection snapshots and residual-chat maintenance controls and dedicated endpoints. Upgrades preserve existing files and continue previously confirmed pending deletion tasks.
+- Align menus, buttons and top tabs with Host styles, retaining black selected tabs. Unify workspace hover behavior and default-workspace translations, and add a quick-view action to the official archive notice.
+
 ## 1.6.4 — 2026-11-06
 
 ### 中文

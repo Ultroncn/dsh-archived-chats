@@ -236,7 +236,7 @@ test('continues after archive failures without capturing snapshots', async () =>
 
   assert.deepEqual(result.archived, ['good-first', 'snapshot-fails', 'good-last']);
   assert.deepEqual(result.failed, [{ id: 'archive-fails', reason: 'archive-failed' }]);
-  assert.deepEqual(result.snapshots, []);
+  assert.equal(result.snapshots, undefined);
   assert.deepEqual(item.calls.capture, []);
   assert.deepEqual(item.calls.archive.map((call) => call.id), ['good-first', 'archive-fails', 'snapshot-fails', 'good-last']);
   assert.equal(item.calls.lifecycle.length, 4);
@@ -249,7 +249,7 @@ test('a lifecycle rejection after its callback reports one failure without commi
   const result = await item.service.execute(preview.token, preview.nonce);
 
   assert.deepEqual(result.archived, []);
-  assert.deepEqual(result.snapshots, []);
+  assert.equal(result.snapshots, undefined);
   assert.deepEqual(result.failed, [{ id: 'queue-rejected', reason: 'lifecycle-failed' }]);
 });
 

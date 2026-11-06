@@ -10,10 +10,9 @@ import { PassThrough } from 'node:stream';
 import { buffer } from 'node:stream/consumers';
 import { zipSync, unzipSync, strToU8 } from 'fflate';
 import { apply as applyPlugin } from '../lib/index.js';
-import { withLegacyFixtures } from './helpers/legacy-recycle-fixture.mjs';
-const apply = withLegacyFixtures(applyPlugin);
+const apply = applyPlugin;
 import { createExportZip, planExport } from '../lib/export.js';
-import { createTrashStore } from '../lib/trash.js';
+import { createDeletionTaskStore } from '../lib/deletion-tasks.js';
 
 // Opt in to the installed official backend without depending on a user's store.
 // DSH_NATIVE_MODULE_ROOT points at the Host's node_modules directory.
@@ -43,6 +42,15 @@ async function smallBackup(id, root) {
     inspect: async () => ({ meta, events, inheritedEventCount: 0 }), generatorVersion: 'test' });
   const [bytes] = await Promise.all([buffer(zip.stream), zip.completion]);
   return { bytes, meta, events };
+}
+
+async function confirmedDelete(f, path, sessionIds) {
+  const source = 'archive';
+  const rows = (await f.call('/state')).json().sessions;
+  const preview = await f.call('/deletion/preview', { source,
+    sessions: sessionIds.map(sessionId => ({ sessionId, createdAt: rows.find(row => row.id === sessionId)?.createdAt })) });
+  assert.equal(preview.status, 200, preview.bytes.toString());
+  return f.call(path, { sessionIds, permanent: true, fingerprint: preview.json().plan.fingerprint });
 }
 
 async function fixture(t, { projections = false } = {}) {
@@ -148,7 +156,7 @@ test('official modern backend: export, permanent delete, import, preview, unarch
   assert.equal(exported.status, 200, exported.bytes.toString());
   const conflict = await f.inspect(exported.bytes);
   assert.equal(conflict.sessions[0].conflict, true);
-  assert.deepEqual((await f.call('/delete-all', { sessionIds: [id], permanent: true })).json().deleted, [id]);
+  assert.deepEqual((await confirmedDelete(f, '/delete-all', [id])).json().deleted, [id]);
   assert.equal(await f.raw.stat(id), undefined);
 
   // The user's existing v1 ZIP remains restorable after the upgrade.
@@ -219,7 +227,7 @@ test('official modern backend: a fork backup restores its inherited cut without 
   const record = JSON.parse(new TextDecoder().decode(files[manifest.sessions[0].files.json]));
   assert.equal(record.source.inheritedEventCount, 1);
   assert.deepEqual(record.source.events, events);
-  assert.deepEqual((await f.call('/delete-all', { sessionIds: [id], permanent: true })).json().deleted, [id]);
+  assert.deepEqual((await confirmedDelete(f, '/delete-all', [id])).json().deleted, [id]);
   const preview = await f.inspect(exported.bytes);
   const restored = await f.call('/import/restore', { token: preview.token, nonce: preview.nonce, sessionIds: [id] });
   assert.equal(restored.status, 200, restored.bytes.toString());
@@ -298,10 +306,9 @@ test('ZIP restore cannot resurrect an ID still reserved by a pending deletion', 
   const f = await fixture(t);
   const backup = await smallBackup('session-pending-delete', f.root);
   const preview = await f.inspect(backup.bytes);
-  const trash = createTrashStore({ path: join(f.root, 'plugin-data', 'archived-chats', 'trash.json') });
-  await trash.put({ sessionId: backup.meta.id, state: 'purge-pending', trashedAt: '2026-09-20T00:00:00.000Z', purgeRequestedAt: '2026-09-20T00:00:00.000Z',
-    title: 'Pending deletion', createdAt: 42, origin: null, workspace: null, wasArchived: true,
-    tags: [], note: '', metadataUpdatedAt: null, snapshotId: null, snapshotBytes: 0, snapshotAttachmentCount: 0, liveDisposition: 'cold' });
+  const trash = createDeletionTaskStore({ path: join(f.root, 'plugin-data', 'archived-chats', 'deletion-tasks.json') });
+  await trash.put({ sessionId: backup.meta.id, taskId: 'import-reservation', state: 'purge-pending', purgeRequestedAt: '2026-09-20T00:00:00.000Z',
+    title: 'Pending deletion', createdAt: 42, origin: null, workspace: null });
   const result = await f.call('/import/restore', { token: preview.token, nonce: preview.nonce, sessionIds: [backup.meta.id] });
   assert.equal(result.status, 409, result.bytes.toString());
   assert.equal(result.json().skipped[0].reason, 'id-conflict');
@@ -310,7 +317,9 @@ test('ZIP restore cannot resurrect an ID still reserved by a pending deletion', 
 });
 
 
-test('official modern backend: purge and empty succeed with compressed historical-only sessions', { skip: !nativeRoot }, async t => {
+
+
+test('official modern backend: permanent deletion handles current and compressed historical sessions', { skip: !nativeRoot }, async t => {
   const f = await fixture(t);
   const oldId = 'session-historical-only';
   const mixedId = 'session-mixed-generations';
@@ -341,38 +350,19 @@ test('official modern backend: purge and empty succeed with compressed historica
   const historicalBytes = await readFile(historicalPath);
   f.registry.state.archivedSessionIds = [oldId, mixedId, currentId, directId];
 
-  const movedCurrent = await f.call('/__test_seed_legacy_trash', { sessionId: currentId });
-  assert.equal(movedCurrent.status, 200, movedCurrent.bytes.toString());
-  const purgedCurrent = await f.call('/trash/purge', { sessionIds: [currentId] });
-  assert.deepEqual(purgedCurrent.json().purged, [currentId], purgedCurrent.bytes.toString());
-  assert.deepEqual(purgedCurrent.json().failed, []);
-  await assert.rejects(access(dirname(paths.get(currentId))), { code: 'ENOENT' });
-  assert.deepEqual(await readFile(historicalPath), historicalBytes, 'purging a sibling preserves historical bytes');
-
-  const direct = await f.call('/delete-all', { sessionIds: [directId], permanent: true });
-  assert.deepEqual(direct.json().deleted, [directId], direct.bytes.toString());
-  await assert.rejects(access(dirname(paths.get(directId))), { code: 'ENOENT' });
-
-  for (const id of [oldId, mixedId]) {
-    const moved = await f.call('/__test_seed_legacy_trash', { sessionId: id });
-    assert.equal(moved.status, 200, moved.bytes.toString());
+  for (const id of [currentId, directId, oldId, mixedId]) {
+    const result = await confirmedDelete(f, '/delete-all', [id]);
+    assert.deepEqual(result.json().deleted, [id], result.bytes.toString());
+    assert.deepEqual(result.json().failed, []);
+    await assert.rejects(access(dirname(paths.get(id))), { code: 'ENOENT' });
+    if (id === currentId) assert.deepEqual(await readFile(historicalPath), historicalBytes, 'deleting a sibling preserves historical bytes');
   }
-  const trash = (await f.call('/trash')).json().sessions;
-  assert.equal(trash.length, 2);
-  const targets = trash.map(row => ({ sessionId: row.sessionId, state: row.state,
-    trashedAt: row.trashedAt, snapshotId: row.snapshotId, bytes: row.snapshotBytes }));
-  const emptied = await f.call('/trash/empty', { targets });
-  assert.deepEqual(emptied.json().failed, [], emptied.bytes.toString());
-  assert.deepEqual(emptied.json().purged.sort(), [oldId, mixedId].sort());
-  assert.deepEqual((await f.call('/trash')).json().sessions, []);
+  assert.deepEqual((await f.call('/deletion-tasks')).json().sessions, []);
   assert.deepEqual(f.registry.archivedSessionIds, []);
   assert.deepEqual(f.workspace.sessionIds, []);
-  for (const id of [oldId, mixedId]) {
-    await assert.rejects(access(dirname(paths.get(id))), { code: 'ENOENT' });
-  }
 });
 
-test('official modern backend: cascade preserves forks and orphan backups remain importable', { skip: !nativeRoot }, async t => {
+test('official modern backend: cascade preserves forks and unrelated sessions', { skip: !nativeRoot }, async t => {
   const f = await fixture(t);
   const parent = 'session-native-parent';
   const headers = [
@@ -394,31 +384,20 @@ test('official modern backend: cascade preserves forks and orphan backups remain
   }
   f.registry.state.archivedSessionIds = [parent];
   await f.workspace.attachSession(parent);
-  const removed = await f.call('/delete-all', { sessionIds: [parent], permanent: true });
+  const removed = await confirmedDelete(f, '/delete-all', [parent]);
   assert.equal(removed.status, 200, removed.bytes.toString());
   assert.deepEqual(removed.json().deleted.sort(), ['native-child', 'native-grandchild', parent].sort());
   const remaining = (await f.raw.list()).map(item => item.header.id);
   assert.equal(remaining.includes('native-fork'), true);
   assert.equal(remaining.includes('native-fork-child'), true);
-  const listed = await f.call('/orphans');
-  assert.deepEqual(listed.json().sessions.map(row => row.id).sort(), ['native-blank', 'native-orphan']);
+  assert.equal(remaining.includes('native-orphan'), true);
+  assert.equal(remaining.includes('native-blank'), true);
   const preview = await f.call('/preview', { sessionId: 'native-orphan', scope: 'orphan' });
-  assert.equal(preview.status, 200, preview.bytes.toString());
-  assert.equal(preview.json().messages[0].segments[0].text, 'Synthetic orphan content');
-  const exported = await f.call('/orphans/export', Buffer.from(new URLSearchParams({ sessionIds: JSON.stringify(['native-orphan']) }).toString()),
-    { 'content-type': 'application/x-www-form-urlencoded' });
-  assert.equal(exported.status, 200, exported.bytes.toString());
-  assert.equal(JSON.parse(Buffer.from(unzipSync(exported.bytes)['manifest.json'])).version, 2);
-  const deleted = await f.call('/orphans/delete', { sessionIds: ['native-orphan', 'native-blank'] });
-  assert.equal(deleted.status, 200, deleted.bytes.toString());
-  const plan = await f.inspect(exported.bytes);
-  assert.equal((await f.call('/import/restore', { token: plan.token, nonce: plan.nonce, sessionIds: ['native-orphan'] })).status, 200);
-  const reopened = await f.raw.open('native-orphan', 'read');
-  assert.equal((await reopened.read()).events[0].data.content[0].text, 'Synthetic orphan content');
-  await reopened.close();
-  const last = (await f.raw.list()).map(item => item.header.id);
-  assert.equal(last.includes('native-fork'), true);
-  assert.equal(last.includes('native-fork-child'), true);
+  assert.equal(preview.status, 400);
+  assert.equal(preview.json().error, 'preview-scope-invalid');
+  const untouched = await f.raw.open('native-orphan', 'read');
+  assert.equal((await untouched.read()).events[0].data.content[0].text, 'Synthetic orphan content');
+  await untouched.close();
 });
 
 

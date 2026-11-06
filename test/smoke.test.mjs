@@ -13,8 +13,6 @@ import { fileURLToPath } from 'node:url';
 import { EventEmitter, once } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { unzipSync, strFromU8 } from 'fflate';
-import { createSnapshotStore } from '../lib/snapshot.js';
-import { withLegacyFixtures } from './helpers/legacy-recycle-fixture.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageVersion = JSON.parse(readFileSync(join(here, '../package.json'), 'utf8')).version;
@@ -36,6 +34,12 @@ writeFileSync(metadataFile, JSON.stringify({
     },
   },
 }), 'utf8');
+
+function deletionPreviewFixture(options) {
+  const sessions = JSON.parse(options.body).sessions;
+  return new Response(JSON.stringify({ plan: { fingerprint: 'fixture-scope', targets: sessions,
+    selectedCount: sessions.length, subagentCount: 0, total: sessions.length } }));
+}
 
 let failures = 0;
 function assert(cond, label) {
@@ -97,6 +101,18 @@ async function call(routes, path, req) {
   await handler(req, res);
   if (!res.writableFinished) await once(res, 'finish');
   return res;
+}
+async function confirmedLegacyCall(routeMap, path, body, source = 'archive') {
+  const base = '/plugins/dsh-archived-chats';
+  const listRequest = mockReq('GET', {});
+  const listed = await call(routeMap, `${base}/${source === 'archive' ? 'state' : 'unarchived'}`, listRequest);
+  const rows = listed.json().sessions ?? [];
+  const sessions = body.sessionIds.map(sessionId => ({ sessionId, createdAt: rows.find(row => row.id === sessionId)?.createdAt ?? 0 }));
+  const preview = await call(routeMap, `${base}/deletion/preview`, mockReq('POST', { 'x-dsh-archived-chats': '1' },
+    JSON.stringify({ source, sessions })));
+  const request = mockReq('POST', { 'x-dsh-archived-chats': '1' },
+    JSON.stringify({ ...body, fingerprint: preview.json().plan?.fingerprint ?? 'refused-preview' }));
+  return call(routeMap, path, request);
 }
 async function waitUntil(predicate, timeout = 1000) {
   const deadline = Date.now() + timeout;
@@ -320,16 +336,8 @@ services.attachments = {
   }),
 };
 
-// Startup recovery removes unreferenced upgrade-era snapshots. They must never
-// be projected into the Recycle Bin while recovery is running.
-const legacyStore = createSnapshotStore({ root: join(testHome, 'plugin-data', 'archived-chats', 'snapshots'), persistence, attachments: services.attachments });
-const seedLegacy = () => legacyStore.capture({ sessionId: 'session-a', archive: { title: 'Legacy Alpha', workspace: { id: 'ws-1', title: 'Project', path: '/ws/private' }, wasArchived: true, tags: [], note: 'keep this' }, liveDisposition: 'cold' });
-const capturedSnapshotId = (await seedLegacy()).snapshotId;
-const purgeSnapshotId = (await seedLegacy()).snapshotId;
-const clearSnapshotId = (await seedLegacy()).snapshotId;
-
 const { apply: applyPlugin, name } = await import(new URL('../lib/index.js', import.meta.url));
-const apply = withLegacyFixtures(applyPlugin);
+const apply = applyPlugin;
 //#endregion
 
 console.log('\n[1] host half — lazy route registration');
@@ -338,8 +346,8 @@ assert(name === 'archived-chats', `plugin name is "archived-chats" (got "${name}
 assert(routes.size === 0, 'no routes while webServer is unbound');
 services.webServer = { register: (route) => { routes.set(route.path, route.handler); return () => routes.delete(route.path); } };
 listeners.find(([event]) => event === 'internal/service')?.[1]('webServer');
-assert(routes.size === 35, `thirty-four public routes and one legacy fixture builder registered after webServer binds (got ${routes.size})`);
-for (const path of ['about', 'about/check-updates', 'about/install-update', 'state', 'stats', 'retention/policy', 'retention/preview', 'retention/apply', 'lineage', 'preview', 'preview/image', 'search', 'export', 'import/inspect', 'import/restore', 'metadata', 'trash', 'trash/restore', 'trash/purge', 'trash/empty', 'unarchive', 'unarchive-all', 'delete', 'delete-all', 'unarchived', 'unarchived/export', 'orphans', 'orphans/delete', 'orphans/export', 'workspace-archive/workspaces', 'workspace-archive/preview', 'workspace-archive/apply']) {
+assert(routes.size === 27, `twenty-seven public routes registered after webServer binds (got ${routes.size})`);
+for (const path of ['about', 'about/check-updates', 'about/install-update', 'state', 'stats', 'lineage', 'preview', 'preview/image', 'search', 'export', 'import/inspect', 'import/restore', 'metadata', 'deletion-tasks', 'deletion-tasks/retry', 'unarchive', 'unarchive-all', 'delete', 'delete-all', 'unarchived', 'unarchived/export', 'workspace-archive/workspaces', 'workspace-archive/preview', 'workspace-archive/apply']) {
   assert(routes.has(`/plugins/dsh-archived-chats/${path}`), `route /${path} registered`);
 }
 for (const path of ['history/capture', 'history', 'history/preview', 'history/preview/image', 'history/restore/preview', 'history/restore', 'history/delete', 'history/delete-all']) {
@@ -401,7 +409,7 @@ console.log('\n[1a] workspace bulk archive routes');
   const oversizedApply = await call(routes, '/plugins/dsh-archived-chats/workspace-archive/apply', mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ token: 'x'.repeat(64 * 1024), nonce: 'y' })));
   assert(oversizedApply.status === 413, 'workspace apply enforces the 64 KiB body limit');
   const applied = await call(routes, '/plugins/dsh-archived-chats/workspace-archive/apply', mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ token: preview.json().token, nonce: preview.json().nonce })));
-  assert(applied.status === 200 && applied.json().archived.includes(id) && applied.json().snapshots.length === 0,
+  assert(applied.status === 200 && applied.json().archived.includes(id) && applied.json().snapshots === undefined,
     `workspace apply archives confirmed cold sessions without history snapshots (got ${applied.status}: ${applied.body})`);
   assert(workspaceState.archivedSessionIds.includes(id), 'workspace apply mutates Host archive membership');
 
@@ -499,96 +507,7 @@ console.log('\n[1a1] workspace archive late session binding');
 }
 
 console.log('\n[1a0] storage insights, retention, and lineage routes');
-{
-  const upgradedTrash = await call(routes, '/plugins/dsh-archived-chats/trash', mockReq('GET', {}));
-  assert(upgradedTrash.status === 200 && upgradedTrash.json().sessions.length === 0,
-    'upgrade-era snapshots do not appear in the Recycle Bin');
-  assert(upgradedTrash.json().summary.count === 0 && upgradedTrash.json().summary.snapshotBytes === 0,
-    'upgrade-era snapshots do not affect Recycle Bin totals');
 
-  const startupSnapshotIds = [capturedSnapshotId, purgeSnapshotId, clearSnapshotId];
-  assert(startupSnapshotIds.every(id => existsSync(join(testHome, 'plugin-data', 'archived-chats', 'snapshots', id, 'manifest.json'))),
-    'retirement preserves unreferenced historical snapshots without startup sweeping');
-  const untouchedSnapshotId = (await seedLegacy()).snapshotId;
-  const clearedTrash = await call(routes, '/plugins/dsh-archived-chats/trash/empty', mockReq('POST', {
-    'x-dsh-archived-chats': '1',
-  }, '{}'));
-  assert(clearedTrash.status === 400 && clearedTrash.json().error === 'trashTargets-required',
-    'empty Recycle Bin rejects an absent confirmation scope');
-  assert(existsSync(join(testHome, 'plugin-data', 'archived-chats', 'snapshots', untouchedSnapshotId, 'manifest.json')),
-    'empty Recycle Bin with no confirmation scope leaves snapshot files untouched');
-
-  const originalParent = headerRows[1].parentSession;
-  const originalInspect = persistence.inspect;
-  const lineageInspections = [];
-  headerRows[1].parentSession = 'session-source-context';
-  headerRows.push(
-    { id: 'session-source-context', createdAt: 1786726200000, cwd: '/ws/one', title: '   ' },
-    { id: 'session-unrelated-active', createdAt: 1786726600000, cwd: '/ws/private' },
-    { id: 'session-active-branch', parentSession: 'session-b', createdAt: 1786726700000, title: 'Active branch', cwd: '/ws/one' },
-  );
-  events['session-source-context'] = [{ type: 'session/title', data: { title: '可读的来源会话' } }];
-  persistence.inspect = async (id) => {
-    lineageInspections.push(id);
-    return originalInspect(id);
-  };
-  const lineage = await call(routes, '/plugins/dsh-archived-chats/lineage', mockReq('GET', {}));
-  persistence.inspect = originalInspect;
-  delete events['session-source-context'];
-  headerRows.splice(-3);
-  headerRows[1].parentSession = originalParent;
-  assert(lineage.status === 200, `lineage answers 200 (got ${lineage.status})`);
-  const sourceContext = lineage.json().roots.find((node) => node.id === 'session-source-context');
-  assert(sourceContext?.title === '可读的来源会话' && sourceContext.children[0]?.id === 'session-b',
-    'lineage resolves a readable title for the necessary active source context');
-  assert(lineageInspections.includes('session-source-context') && !lineageInspections.includes('session-unrelated-active'),
-    'lineage only resolves titles for archive-related chats');
-  assert(!JSON.stringify(lineage.json()).includes('session-unrelated-active'), 'lineage excludes unrelated active chats');
-  assert(sourceContext?.children[0]?.children.some(node => node.id === 'session-active-branch' && node.status === 'active'), 'lineage route retains unarchived descendants of archived chats');
-  assert(!JSON.stringify(lineage.json()).includes('/ws/'), 'lineage never exposes workspace paths');
-
-  const originalArchivedIds = [...workspaceState.archivedSessionIds];
-  workspaceState.archivedSessionIds = [];
-  const emptyLineage = await call(routes, '/plugins/dsh-archived-chats/lineage', mockReq('GET', {}));
-  workspaceState.archivedSessionIds = originalArchivedIds;
-  assert(emptyLineage.status === 200 && emptyLineage.json().nodeCount === 0 && emptyLineage.json().workspaces.length === 0,
-    'lineage is empty without archived sessions');
-
-  const autoGuard = await call(routes, '/plugins/dsh-archived-chats/retention/policy/preview', mockReq('POST', {}, '{}'));
-  assert(autoGuard.status === 403, 'automatic cleanup confirmation preview requires guard');
-  const autoPolicy = { historicalSnapshotsPerSession: 1, historicalSnapshotMaxAgeDays: null, snapshotQuotaBytes: null, recycleMaxAgeDays: 7, recycleAutoDelete: true };
-  const enableWithoutConfirmation = await call(routes, '/plugins/dsh-archived-chats/retention/policy', mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify(autoPolicy)));
-  assert(enableWithoutConfirmation.status === 410 && enableWithoutConfirmation.json().error === 'retention-retired', 'enabling auto cleanup requires server confirmation');
-  const autoPreview = await call(routes, '/plugins/dsh-archived-chats/retention/policy/preview', mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify(autoPolicy)));
-  assert(autoPreview.status === 410, 'enabling with an empty bin still explains future automatic deletion');
-  const confirmedPolicy = await call(routes, '/plugins/dsh-archived-chats/retention/policy', mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ policy: autoPolicy, confirmation: autoPreview.json() })));
-  assert(confirmedPolicy.status === 410, 'confirmed policy persists explicit opt-in');
-  const policyGet = await call(routes, '/plugins/dsh-archived-chats/retention/policy', mockReq('GET', {}));
-  assert(policyGet.status === 405, 'retention policy rejects GET');
-  const previewMissingGuard = await call(routes, '/plugins/dsh-archived-chats/retention/preview', mockReq('POST', {}, '{}'));
-  assert(previewMissingGuard.status === 403, 'retention preview rejects missing guard');
-  const applyMissingGuard = await call(routes, '/plugins/dsh-archived-chats/retention/apply', mockReq('POST', {}, '{}'));
-  assert(applyMissingGuard.status === 403, 'retention apply rejects missing guard');
-
-  const savedPolicy = await call(routes, '/plugins/dsh-archived-chats/retention/policy', mockReq('POST', {
-    'x-dsh-archived-chats': '1',
-  }, JSON.stringify({
-    historicalSnapshotsPerSession: 1,
-    historicalSnapshotMaxAgeDays: null,
-    snapshotQuotaBytes: null,
-    recycleMaxAgeDays: null,
-  })));
-  assert(savedPolicy.status === 410, `retired policy save rejects requests answers 200 (got ${savedPolicy.status})`);
-
-  const preview = await call(routes, '/plugins/dsh-archived-chats/retention/preview', mockReq('POST', {
-    'x-dsh-archived-chats': '1',
-  }, '{}'));
-  assert(preview.status === 410, `retired retention preview rejects requests answers 200 (got ${preview.status})`);
-  const applyResult = await call(routes, '/plugins/dsh-archived-chats/retention/apply', mockReq('POST', {
-    'x-dsh-archived-chats': '1',
-  }, JSON.stringify({ token: preview.json().token, nonce: preview.json().nonce, keys: [] })));
-  assert(applyResult.status === 410, `retired retention apply rejects requests (got ${applyResult.status})`);
-}
 {
   const inspectGet = await call(routes, '/plugins/dsh-archived-chats/import/inspect', mockReq('GET', {}));
   assert(inspectGet.status === 405, `import inspect rejects non-POST methods (got ${inspectGet.status})`);
@@ -1177,150 +1096,13 @@ console.log('\n[4] unarchive');
 }
 
 console.log('\n[5] delete — live session moves to recoverable trash');
-{
-  const liveHeader = { id: 'session-live', createdAt: 1, cwd: '/ws/one' };
-  headerRows.push(liveHeader);
-  events['session-live'] = [];
-  registry.headers.set('session-live', liveHeader);
-  workspaceState.archivedSessionIds.push('session-live');
-  const res = await call(routes, '/plugins/dsh-archived-chats/__test_seed_legacy_trash', mockReq('POST', { 'x-dsh-archived-chats': '1' }, '{"sessionId":"session-live"}'));
-  assert(res.status === 200, `live session deletion accepted (got ${res.status}: ${res.body})`);
-  const body = res.json();
-  assert(body.trashed.includes('session-live'), 'live session reported as trashed');
-  assert(body.failed.length === 0, 'no failures for a parked snapshot-capable session');
-  assert(existsSync(join(tmp, 'session-live')), 'live session files untouched');
-  assert(workspaceState.archivedSessionIds.includes('session-live'), 'parked session stays archived (invisible)');
-  assert(!readPendingStore().includes('session-live'), 'new recycle flow does not add a legacy pending marker');
-  assert(readMetadataStore().sessions['session-live'] !== undefined, 'trash keeps metadata');
-  const stateAfterPark = await call(routes, '/plugins/dsh-archived-chats/state', mockReq('GET', {}));
-  assert(!stateAfterPark.json().sessions.some((s) => s.id === 'session-live'), 'parked session excluded from /state listing');
-  const statsAfterPark = await call(routes, '/plugins/dsh-archived-chats/stats', mockReq('GET', {}));
-  assert(statsAfterPark.json().summary.sessionCount === 2, 'stats exclude a trashed session');
-  assert(statsAfterPark.json().sessions['session-live'] === undefined, 'stats omit the parked session row');
-  const pendingImage = await call(
-    routes,
-    '/plugins/dsh-archived-chats/preview/image',
-    mockReq('POST', {
-      'content-type': 'application/json',
-      'x-dsh-archived-chats': '1',
-    }, JSON.stringify({ sessionId: 'session-live', attachmentId: archivedImageRef.attachmentId })),
-  );
-  assert(pendingImage.status === 404, 'ordinary preview image denies a trashed session');
-  const trashSearch = await call(routes, '/plugins/dsh-archived-chats/search', mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ query: 'secret', sessionIds: ['session-live'] })));
-  assert(trashSearch.status === 200 && trashSearch.json().hits.length === 0 && trashSearch.json().skipped[0]?.reason === 'session-not-visible', 'explicit search candidates cannot expose Recycle Bin content');
-  const trashPreview = await call(routes, '/plugins/dsh-archived-chats/preview', mockReq(
-    'POST', { 'content-type': 'application/json', 'x-dsh-archived-chats': '1' },
-    JSON.stringify({ sessionId: 'session-live', scope: 'trash' }),
-  ));
-  assert(trashPreview.status === 200 && trashPreview.json().session.id === 'session-live', 'trash-scoped preview authorizes the recycle record');
-  const restored = await call(routes, '/plugins/dsh-archived-chats/trash/restore', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, '{"sessionIds":["session-live"]}',
-  ));
-  assert(restored.status === 200 && restored.json().restored.includes('session-live'), 'trashed live session can be restored');
-  workspaceState.archivedSessionIds = workspaceState.archivedSessionIds.filter((id) => id !== 'session-live');
-  headerRows.splice(headerRows.indexOf(liveHeader), 1);
-  delete events['session-live'];
-  registry.headers.delete('session-live');
-}
+
 
 console.log('\n[5b] delete — live session disposed in place (no restart needed)');
-{
-  const id = 'session-live2';
-  mkdirSync(join(tmp, id), { recursive: true });
-  writeFileSync(join(tmp, id, 'session.jsonl.zstd'), 'fake');
-  headerRows.push({ id, createdAt: 1786726600000, cwd: '/ws/one' });
-  events[id] = [];
-  workspaceState.archivedSessionIds.push(id);
-  const calls = { cancel: null, idle: 0, flush: 0, scope: 0, agentDetach: 0, sessionDetach: 0 };
-  const sessionObj = { id, header: { id, createdAt: 1786726600000 } };
-  const agentObj = {
-    cancel: (cause) => { calls.cancel = cause; },
-    whenIdle: async () => { calls.idle += 1; },
-    scope: { dispose: async () => { calls.scope += 1; } },
-  };
-  const sessionsStore = new Map([[id, {
-    session: sessionObj,
-    detach: () => { calls.sessionDetach += 1; sessionsStore.delete(id); },
-  }]]);
-  // Real AgentRegistry entries carry NO detach — unregistration goes through
-  // the registry's detachEntered(entry), which is what the plugin must call.
-  const agentsStore = new Map([[id, { id, agent: agentObj, announcing: false }]]);
-  services.sessions = {
-    get: (sid) => sessionsStore.get(sid)?.session,
-    store: sessionsStore,
-    flush: async () => { calls.flush += 1; },
-  };
-  services.agents = {
-    get: (sid) => agentsStore.get(sid)?.agent,
-    store: agentsStore,
-    detachEntered: (entry) => { calls.agentDetach += 1; agentsStore.delete(entry.id); },
-  };
-  const res = await call(routes, '/plugins/dsh-archived-chats/__test_seed_legacy_trash', mockReq('POST', { 'x-dsh-archived-chats': '1' }, `{"sessionId":"${id}"}`));
-  assert(res.status === 200, `in-place trash move answers 200 (got ${res.status}: ${res.body})`);
-  const body = res.json();
-  assert(body.trashed.includes(id), 'live session reported as trashed');
-  assert(body.failed.length === 0, 'no failed entries');
-  assert(existsSync(join(tmp, id)), 'trash move preserves the session directory');
-  assert(workspaceState.archivedSessionIds.includes(id), 'trashed session stays archived');
-  assert(!readPendingStore().includes(id), 'pending-store crash bracket cleared after completion');
-  const purged = await call(routes, '/plugins/dsh-archived-chats/trash/purge', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: [id] }),
-  ));
-  assert(purged.status === 200 && purged.json().purged.includes(id), 'explicit recycle purge succeeds');
-  assert(calls.cancel?.kind === 'disposed', 'agent cancelled with the disposed cause');
-  assert(calls.idle === 1, 'quiescence awaited before flush');
-  assert(calls.flush === 1, 'durability flushed before detach');
-  assert(calls.scope === 1, 'agent fiber disposed (factory disposer order)');
-  assert(calls.agentDetach === 1 && calls.sessionDetach === 1, 'both store entries detached');
-  assert(!existsSync(join(tmp, id)), 'permanent purge removes the session directory');
-  assert(!workspaceState.archivedSessionIds.includes(id), 'permanent purge removes archive membership');
-  headerRows.splice(headerRows.findIndex((header) => header.id === id), 1);
-  services.sessions = liveSessions;
-  delete services.agents;
-}
+
 
 console.log('\n[6] delete — full path');
-{
-  const res = await call(routes, '/plugins/dsh-archived-chats/__test_seed_legacy_trash', mockReq('POST', { 'x-dsh-archived-chats': '1' }, '{"sessionId":"session-b"}'));
-  assert(res.status === 200 && res.json().trashed.includes('session-b'), `trash move answers 200 (got ${res.status})`);
-  assert(workspaceState.archivedSessionIds.includes('session-b'), 'trash move keeps archive membership');
-  assert(existsSync(join(tmp, 'session-b')), 'trash move keeps session directory');
-  assert(readMetadataStore().sessions['session-b'] !== undefined, 'trash move keeps metadata');
-  const purge = await call(routes, '/plugins/dsh-archived-chats/trash/purge', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, '{"sessionIds":["session-b"]}',
-  ));
-  assert(purge.status === 200 && purge.json().purged.includes('session-b'), 'permanent purge answers 200');
-  assert(!workspaceState.archivedSessionIds.includes('session-b'), 'deleted session left the archive set');
-  assert(detached.includes('session-b'), 'deleted session detached from its workspace record');
-  assert(!existsSync(join(tmp, 'session-b')), 'session directory removed from disk');
-  assert(!registry.headers.has('session-b'), 'registry header index purged (no ghost re-archive)');
-  assert(!registry.sessionPaths.has('session-b'), 'registry session-path index purged');
-  assert(registry.headers.has('session-c'), 'other sessions stay indexed');
-  assert(readMetadataStore().sessions['session-b'] === undefined, 'cold delete removes metadata after physical deletion');
-  headerRows.splice(headerRows.findIndex((header) => header.id === 'session-b'), 1);
 
-  const directDelete = await call(routes, '/plugins/dsh-archived-chats/delete-all', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: ['session-c'], permanent: true }),
-  ));
-  assert(directDelete.status === 200 && directDelete.json().deleted.includes('session-c'), 'direct permanent delete answers 200');
-  assert(!existsSync(join(tmp, 'session-c')), 'direct permanent delete skips recycle and removes the session directory');
-  assert(!workspaceState.archivedSessionIds.includes('session-c'), 'direct permanent delete removes archive membership');
-  headerRows.splice(headerRows.findIndex((header) => header.id === 'session-c'), 1);
-
-  headerRows.push({ id: 'session-c', createdAt: 1786726500000, cwd: '/ws/one' });
-  events['session-c'] = [];
-  mkdirSync(join(tmp, 'session-c'), { recursive: true });
-  writeFileSync(join(tmp, 'session-c', 'session.jsonl.zstd'), 'restored');
-  workspaceState.archivedSessionIds.push('session-c');
-  registry.headers.set('session-c', headerRows.at(-1));
-  registry.sessionPaths.set('session-c', '/ws/one');
-  mkdirSync(join(tmp, 'session-b'), { recursive: true });
-  writeFileSync(join(tmp, 'session-b', 'session.jsonl.zstd'), 'restored');
-  headerRows.push({ id: 'session-b', createdAt: 1786726400000, cwd: '/ws/two', parentSession: 'session-a', seedLength: 2, origin: 'subagent', delegationDepth: 1 });
-  workspaceState.archivedSessionIds.push('session-b');
-  const statsAfterRearchive = await call(routes, '/plugins/dsh-archived-chats/stats', mockReq('GET', {}));
-  assert(statsAfterRearchive.json().sessions['session-b'].sizeBytes === 8, 'delete invalidates cached stats before a session is re-archived');
-}
 
 console.log('\n[7] delete fails without a resolvable physical location');
 {
@@ -1345,10 +1127,10 @@ console.log('\n[7] delete fails without a resolvable physical location');
   const locate = persistence.locate;
   persistence.list = async () => { throw new Error('temporary header listing outage'); };
   persistence.locate = async () => undefined;
-  const res = await call(routes, '/plugins/dsh-archived-chats/__test_seed_legacy_trash', mockReq('POST', { 'x-dsh-archived-chats': '1' }, `{"sessionId":"${id}"}`));
+  const res = await confirmedLegacyCall(routes, '/plugins/dsh-archived-chats/delete-all', { sessionIds: [id], permanent: true });
   persistence.list = list;
   persistence.locate = locate;
-  assert(res.status === 409 && res.json().failed.some((failure) => failure.id === id), 'unconfirmed delete reports the session as failed');
+  assert(res.status === 503 && res.json().error === 'session-inventory-unavailable', `unavailable inventory refuses deletion (got ${res.status} ${res.body})`);
   assert(existsSync(join(tmp, id)), 'unconfirmed delete leaves the physical session directory');
   assert(readMetadataStore().sessions[id] !== undefined, 'unconfirmed delete retains authoritative metadata');
   assert(workspaceState.archivedSessionIds.includes(id), 'unconfirmed delete keeps the session archived and visible');
@@ -1373,8 +1155,8 @@ console.log('\n[8] delete-all — partial failure keeps going');
   workspaceState.archivedSessionIds.push('session-live');
   const res = await call(routes, '/plugins/dsh-archived-chats/delete-all', mockReq('POST', { 'x-dsh-archived-chats': '1' }, '{"sessionIds":["session-c","session-live","session-b"]}'));
   const body = res.json();
-  assert(res.status === 410, `retired batch recycle answers 410 (got ${res.status})`);
-  assert(body.error === 'recycle-retired', 'retired recycle never becomes a permanent deletion');
+  assert(res.status === 400, `missing permanent confirmation answers 400 (got ${res.status})`);
+  assert(body.error === 'permanent-confirmation-required', 'missing confirmation never starts permanent deletion');
   assert(existsSync(join(tmp, 'session-c')), 'failed trash move keeps session-c directory');
   assert(readFileSync(metadataFile, 'utf8') === corruptMetadata, 'failed trash move leaves corrupt metadata bytes untouched');
   workspaceState.archivedSessionIds = workspaceState.archivedSessionIds.filter((id) => id !== 'session-live');
@@ -1697,9 +1479,9 @@ console.log('\n[10b] client model — sorting and visible selection');
   // Every non-default scope must reach the Host. Naming only "trash" here
   // downgraded any other scope to "archive", and the Host then answered 404
   // because the session is not archived at all.
-  await clientExports.__test.fetchArchivePreview?.('orphan-a', 0, 50, previewController.signal, 'orphan');
-  assert(inspectRequests.at(-1)?.options.body === '{"sessionId":"orphan-a","offset":0,"limit":50,"scope":"orphan"}',
-    'preview helper forwards an orphan scope instead of falling back to archive');
+  await clientExports.__test.fetchArchivePreview?.('active-a', 0, 50, previewController.signal, 'unarchived');
+  assert(inspectRequests.at(-1)?.options.body === '{"sessionId":"active-a","offset":0,"limit":50,"scope":"unarchived"}',
+    'preview helper forwards an unarchived scope instead of falling back to archive');
   await clientExports.__test.fetchArchivePreview?.('session-a', 0, 50, previewController.signal, 'trash');
   assert(inspectRequests.at(-1)?.options.body === '{"sessionId":"session-a","offset":0,"limit":50,"scope":"trash"}',
     'preview helper still forwards the recycle scope');
@@ -1717,321 +1499,6 @@ console.log('\n[10b] client model — sorting and visible selection');
   assert(searchRequest?.options.signal === searchController.signal, 'search helper forwards cancellation');
   assert(searchRequest?.options.body === '{"query":"needle","limit":20}', 'search helper sends only the bounded query contract');
 
-  const trashRows = [
-    { sessionId: 'session-a', state: 'trashed', title: 'Alpha', workspace: { id: 'ws-1', title: '项目一', path: '/private' } },
-    { sessionId: 'session-b', state: 'degraded', title: 'Beta', workspace: null },
-    { sessionId: 'session-c', state: 'purge-pending', title: 'Gamma', workspace: { id: 'ws-1', title: '项目一', path: '/private' } },
-  ];
-  globalThis.fetch = async (url, options = {}) => {
-    inspectRequests.push({ url, options });
-    return { ok: true, status: 200, json: async () => ({ status: 'ready', sessions: trashRows, summary: { total: 3 } }) };
-  };
-  const trashBody = await clientExports.__test.fetchTrash?.();
-  let trashRequest = inspectRequests.at(-1);
-  assert(trashBody?.sessions?.length === 3, 'trash helper returns recycle rows');
-  assert(trashRequest?.url === '/plugins/dsh-archived-chats/trash', 'trash helper targets the recycle route');
-  assert(trashRequest?.options.cache === 'no-store' && trashRequest?.options.method === undefined, 'trash helper uses an uncached GET');
-
-  const restored = await clientExports.__test.restoreTrash?.(['session-b', 'session-a', 'session-b']);
-  trashRequest = inspectRequests.at(-1);
-  assert(restored?.status === 'ready', 'restore helper returns the host response');
-  assert(trashRequest?.url === '/plugins/dsh-archived-chats/trash/restore', 'restore targets trash route');
-  assert(trashRequest?.options.method === 'POST', 'restore uses POST');
-  assert(trashRequest?.options.headers['x-dsh-archived-chats'] === '1', 'restore sends guard');
-  assert(trashRequest?.options.body === '{"sessionIds":["session-b","session-a"]}', 'restore preserves unique order');
-
-  await clientExports.__test.purgeTrash?.(['session-c', 'session-a', 'session-c']);
-  trashRequest = inspectRequests.at(-1);
-  assert(trashRequest?.url === '/plugins/dsh-archived-chats/trash/purge', 'purge targets trash route');
-  assert(trashRequest?.options.method === 'POST' && trashRequest?.options.headers['x-dsh-archived-chats'] === '1', 'purge uses guarded POST');
-  assert(trashRequest?.options.body === '{"sessionIds":["session-c","session-a"]}', 'purge preserves unique order');
-
-  const capturedEmptyTarget = {
-    sessionId: 'session-c', state: 'trashed', trashedAt: '2026-08-24T00:00:00.000Z',
-    snapshotId: 'snapshot-c', bytes: 30,
-  };
-  await clientExports.__test.emptyTrash?.([capturedEmptyTarget]);
-  trashRequest = inspectRequests.at(-1);
-  assert(trashRequest?.url === '/plugins/dsh-archived-chats/trash/empty', 'empty targets trash authority route');
-  assert(trashRequest?.options.method === 'POST' && trashRequest?.options.headers['x-dsh-archived-chats'] === '1', 'empty uses guarded POST');
-  assert(trashRequest?.options.body === '{"targets":[{"sessionId":"session-c","state":"trashed","trashedAt":"2026-08-24T00:00:00.000Z","snapshotId":"snapshot-c","bytes":30}]}',
-    'empty sends the exact captured record incarnation');
-  let emptyRestoreError = null;
-  try { await clientExports.__test.restoreTrash?.([]); } catch (error) { emptyRestoreError = error; }
-  assert(/sessionIds is required/u.test(String(emptyRestoreError?.message)), 'restore rejects an empty selection before fetch');
-  let emptyPurgeError = null;
-  try { await clientExports.__test.purgeTrash?.([]); } catch (error) { emptyPurgeError = error; }
-  assert(/sessionIds is required/u.test(String(emptyPurgeError?.message)), 'purge rejects an empty selection before fetch');
-
-  globalThis.fetch = async (url, options = {}) => {
-    inspectRequests.push({ url, options });
-    const path = String(url);
-    const body = { roots: [{ id: 'root', title: 'Root', children: [] }], diagnostics: [], nodeCount: 1 };
-    return { ok: true, status: 200, json: async () => body };
-  };
-  const lineageController = new AbortController();
-  const lineageBody = await clientExports.__test.fetchLineage?.(lineageController.signal);
-  const featureRequest = inspectRequests.at(-1);
-  assert(lineageBody?.roots?.[0]?.id === 'root' && featureRequest?.url.endsWith('/lineage') && featureRequest?.options.signal === lineageController.signal, 'lineage helper returns cancellable uncached forest');
-
-  const lineageVisible = clientExports.__test.filterLineageForest?.([{
-    id: 'root', title: 'Root', children: [{ id: 'child', title: 'Child', children: [{ id: 'grandchild', title: 'Needle', children: [] }] }],
-  }], 'needle');
-  assert(lineageVisible?.[0]?.children?.[0]?.children?.[0]?.id === 'grandchild', 'lineage search preserves ancestors of a matching descendant');
-  const projectFiltered = clientExports.__test.filterLineageForest?.([{
-    id: 'source', title: 'Shared source', workspace: { id: 'ws-source', title: 'Shared' }, children: [
-      { id: 'alpha', title: 'Alpha chat', workspace: { id: 'ws-alpha', title: 'Project Alpha' }, children: [] },
-      { id: 'beta', title: 'Beta chat', workspace: { id: 'ws-beta', title: 'Project Beta' }, children: [] },
-    ],
-  }], '', 'ws-beta');
-  assert(JSON.stringify(projectFiltered?.map((node) => ({ id: node.id, children: node.children.map((child) => child.id) })))
-    === '[{"id":"source","children":["beta"]}]',
-  'lineage project filtering keeps the required ancestor path and removes branches from other projects');
-  const projectSearch = clientExports.__test.filterLineageForest?.([{
-    id: 'source', title: 'Shared source', workspace: { id: 'ws-source', title: 'Shared' }, children: [
-      { id: 'beta', title: 'Ordinary title', workspace: { id: 'ws-beta', title: 'Project Beta' }, children: [] },
-    ],
-  }], 'project beta');
-  assert(projectSearch?.[0]?.children?.[0]?.id === 'beta', 'lineage search matches project names while preserving their ancestor context');
-  const statusFiltered = clientExports.__test.filterLineageForest?.([{
-    id: 'source', title: 'Source', status: 'active', workspace: { id: 'ws-source', title: 'Shared' }, children: [
-      { id: 'archived', title: 'Archived chat', status: 'archived', workspace: { id: 'ws-one', title: 'Project One' }, children: [] },
-      { id: 'trash', title: 'Recycled chat', status: 'trash', workspace: { id: 'ws-two', title: 'Project Two' }, children: [] },
-    ],
-  }], '', 'all', 'trash');
-  assert(statusFiltered?.[0]?.id === 'source'
-    && statusFiltered[0].children.length === 1
-    && statusFiltered[0].children[0].id === 'trash',
-  'lineage status filtering keeps necessary source context and only matching managed chats');
-  let deepLineage = { id: 'deep-4999', title: 'Needle', children: [] };
-  for (let index = 4998; index >= 0; index -= 1) deepLineage = { id: `deep-${index}`, title: '', children: [deepLineage] };
-  const deepVisible = clientExports.__test.filterLineageForest?.([deepLineage], 'needle');
-  let deepCursor = deepVisible?.[0];
-  for (let index = 1; index < 5000; index += 1) deepCursor = deepCursor.children[0];
-  assert(deepCursor?.id === 'deep-4999', 'lineage client filtering handles the advertised maximum depth');
-
-  const allWorkspaceGroups = clientExports.__test.groupLineageWorkspaces?.([
-    { id: 'live-only', title: 'Live only', status: 'active', workspace: { id: null, title: null }, children: [] },
-  ], [{ id: 'empty', title: 'Empty workspace' }]);
-  assert(!allWorkspaceGroups?.some(group => group.key === 'empty')
-    && allWorkspaceGroups?.some(group => group.key === 'ungrouped' && group.count === 1 && !group.roots[0].contextOnly),
-    'workspace grouping excludes empty inventory entries and retains related ungrouped chats');
-  const activeOnly = clientExports.__test.filterLineageForest?.([
-    { id: 'live', status: 'active', children: [] }, { id: 'archived', status: 'archived', children: [] },
-  ], '', 'all', 'active');
-  assert(activeOnly?.length === 1 && activeOnly[0].id === 'live', 'unarchived is an independent lineage status filter');
-
-  const workspaceForest = [{
-    id: 'origin-a', title: 'Original A', status: 'archived', workspace: { id: 'a', title: 'A' }, children: [{
-      id: 'fork-b', title: 'Fork B', status: 'archived', workspace: { id: 'b', title: 'B' }, children: [{
-        id: 'back-a', title: 'Back A', status: 'trash', workspace: { id: 'a', title: 'A' }, children: [],
-      }],
-    }],
-  }, { id: 'loose', title: 'Loose', status: 'archived', workspace: null, children: [] }];
-  const groupedLineage = clientExports.__test.groupLineageWorkspaces?.(workspaceForest);
-  assert(JSON.stringify(groupedLineage?.map((group) => [group.key, group.count])) === '[["a",2],["b",1],["ungrouped",1]]',
-    'workspace projection counts each managed session once including ungrouped and cross-workspace forks');
-  assert(groupedLineage?.[0]?.roots?.[0]?.children?.[0]?.children?.[0]?.sourceParent?.id === 'fork-b'
-    && groupedLineage?.[1]?.roots?.[0]?.children?.[0]?.sourceParent?.id === 'origin-a'
-    && workspaceForest[0].children[0].id === 'fork-b',
-    'splitting workspaces retains the exact parent source without mutating the original forest');
-
-  const contextualForest = clientExports.__test.groupLineageWorkspaces?.([{
-    id: 'live-source', title: 'Live source', status: 'active', workspace: { id: 'a', title: 'A' }, children: [{
-      id: 'bridge', title: 'Bridge', status: 'archived', workspace: { id: 'b', title: 'B' }, children: [{
-        id: 'recycled', title: 'Recycled', status: 'trash', workspace: { id: 'a', title: 'A' }, children: [],
-      }],
-    }],
-  }]);
-  const contextualA = contextualForest?.find(group => group.key === 'a');
-  assert(contextualA?.roots[0]?.id === 'live-source'
-    && contextualA.roots[0].children[0].id === 'bridge'
-    && contextualA.roots[0].children[0].contextOnly === true
-    && contextualA.roots[0].children[0].children[0].id === 'recycled'
-    && contextualA.count === 2,
-  'workspace lineage retains the exact source chain without counting cross-workspace context twice');
-
-  const fullLineageId = 'session-d81d9954-a56b-4e47-a4ee-2eb2b5a81712';
-  let copiedLineageId = null;
-  const lineageT = (key) => ({
-    'lineage.status.active': '来源会话',
-    'lineage.status.archived': '已归档',
-    'lineage.origin.session': '普通会话',
-    'lineage.origin.subagent': '子代理',
-    'lineage.untitled': '未命名会话',
-    'lineage.sourceUnavailable': '来源信息不可用',
-    'lineage.sourceContext': '来源于',
-    'lineage.contextOnly': '活动会话，仅用于解释关系',
-    'lineage.start': '起始会话',
-    'lineage.created': '创建于',
-    'lineage.project': '项目',
-    'lineage.delegation': '委派层级',
-    'lineage.noBranches': '无分支',
-    'lineage.copyId': '复制 ID',
-    'lineage.copiedId': '已复制',
-    'locale.intl': 'zh-CN',
-  })[key] ?? key;
-  const unnamedActiveTree = clientExports.__test.LineageTreeNodes?.({
-    nodes: [{ id: 'unnamed-active', status: 'active', title: null, children: [] }],
-    collapsed: new Set(['unnamed-active']), t: lineageT,
-  });
-  assert(collectElements(unnamedActiveTree).find(el => el.type === 'strong')?.props.children === lineageT('lineage.untitled'),
-    'an existing unarchived chat without a title is untitled, not an unavailable source');
-  const lineageRowTree = clientExports.__test.LineageTreeNodes?.({
-    nodes: [{
-      id: 'session-source-1234567890-abcdefgh', title: '来源会话', status: 'active', contextOnly: true, origin: null, delegationDepth: 0, createdAt: 1,
-      workspace: { id: 'ws-one', title: '项目一' },
-      children: [{ id: fullLineageId, title: null, status: 'archived', origin: 'subagent', delegationDepth: 1, createdAt: 2, workspace: { id: 'ws-one', title: '项目一' }, children: [] }],
-    }],
-    collapsed: new Set(),
-    onToggle: () => {},
-    onCopy: (id) => { copiedLineageId = id; },
-    copiedId: null,
-    t: lineageT,
-  });
-  const lineageRowElements = collectElements(lineageRowTree);
-  const lineageRows = lineageRowElements.filter((element) => element.type === 'div' && element.props?.className?.includes('dac-lineage-row'));
-  const lineageContexts = lineageRowElements.filter((element) => element.type === 'div' && element.props?.className === 'dac-lineage-context');
-  const lineagePrimaryLabels = lineageRowElements.filter((element) => element.type === 'strong').map(elementText);
-  const lineageStatus = lineageRowElements.find((element) => element.type === 'span' && element.props?.className?.includes('dac-lineage-archived'));
-  const lineageSourceContexts = lineageRowElements.filter((element) => element.props?.className === 'dac-lineage-source-context');
-  const lineageSources = lineageRowElements.filter((element) => element.props?.className === 'dac-lineage-source');
-  const lineageMetadata = lineageRowElements.find((element) => element.props?.className === 'dac-lineage-meta');
-  const lineageFooter = lineageRowElements.find((element) => element.props?.className === 'dac-lineage-footer');
-  const lineageCreated = lineageRowElements.find((element) => element.props?.className === 'dac-lineage-created');
-  const lineageIdTexts = lineageRowElements.filter((element) => element.type === 'small' && element.props?.className === 'dac-lineage-id');
-  const lineageCopy = lineageRowElements.find((element) => element.type === 'button' && element.props?.['aria-label'] === `复制 ID ${fullLineageId}`);
-  const lineageText = elementText(lineageRowTree);
-  assert(lineagePrimaryLabels.includes('来源会话') && lineagePrimaryLabels.includes('未命名会话')
-    && !lineagePrimaryLabels.includes(fullLineageId),
-  'source ancestors have their own visible read-only row and never use IDs as titles');
-  assert(JSON.stringify(lineageRowElements.filter(el => el.props?.role === 'listitem').map(el => el.props['aria-level'])) === '[1,2]',
-    'source and child preserve their actual relationship levels');
-  assert(lineageIdTexts.length === 1 && lineageIdTexts.some(el => el.props.title === fullLineageId && el.props.children === 'session-d81d…b5a81712'),
-    'managed details retain compact IDs with a complete hover value');
-  assert(lineageText.includes('由「来源会话」委派') && lineageText.includes('子代理 · 委派层级 1') && lineageText.includes('项目：项目一'),
-    'subagent delegation is distinguished from ordinary forks');
-  assert(lineageRows.length === 2 && lineageRows.some(el => el.props.className.includes('dac-lineage-context-card')),
-    'source context is visible separately from the managed card');
-  assert(elementText(lineageCreated).startsWith('创建于:') && collectElements(lineageFooter).some(el => el.props?.className === 'dac-lineage-id-actions'),
-    'expanded details group creation time and copy-ID controls');
-  assert(lineageSources.every(el => typeof el.props.title === 'string' && el.props.title.length > 0),
-    'truncated source labels preserve their full explanation on hover');
-  assert(elementText(lineageStatus) === '已归档', 'archive state is separate from the relationship type');
-  lineageCopy?.props.onClick();
-  assert(lineageCopy?.props.children === '复制 ID' && copiedLineageId === fullLineageId,
-  'relationship row copies the exact full session ID from its compact display');
-
-  const connectorNodes = [{
-      id: 'root-connector', title: 'Root', status: 'archived', origin: null, children: [
-        { id: 'branch-a', title: 'Branch A', status: 'archived', origin: null, children: [
-          { id: 'leaf-a', title: 'Leaf A', status: 'archived', origin: null, children: [] },
-        ] },
-        { id: 'branch-b', title: 'Branch B', status: 'archived', origin: null, children: [] },
-      ],
-    }];
-  let toggledConnectorId = null;
-  const connectorTree = clientExports.__test.LineageTreeNodes?.({
-    nodes: connectorNodes,
-    collapsed: new Set(),
-    onToggle: (id) => { toggledConnectorId = id; },
-    t: lineageT,
-  });
-  const connectorElements = collectElements(connectorTree);
-  const connectorItems = connectorElements.filter((element) => element.props?.role === 'listitem');
-  const grandchildItem = connectorItems.find((element) => element.props?.['aria-level'] === 3);
-  const grandchildElements = collectElements(grandchildItem);
-  const continuingGuide = grandchildElements.find((element) => element.props?.className?.includes('dac-lineage-guide-continuing'));
-  const childJunctions = connectorItems
-    .filter((element) => element.props?.['aria-level'] === 2)
-    .flatMap((element) => collectElements(element))
-    .filter((element) => element.props?.className?.includes('dac-lineage-junction-child'));
-  const childGuideCounts = connectorItems
-    .filter((element) => element.props?.['aria-level'] === 2)
-    .map((element) => collectElements(element).filter((child) => child.props?.className?.split(' ').includes('dac-lineage-guide')).length);
-  const connectorToggles = connectorElements.filter((element) => element.type === 'button' && element.props?.className === 'dac-lineage-card-toggle');
-  const connectorRails = connectorElements.filter((element) => element.props?.className === 'dac-lineage-rail');
-  assert(connectorItems.every((element) => element.props?.style?.marginLeft === undefined)
-    && continuingGuide !== undefined && childJunctions.length === 2,
-    'lineage hierarchy retains explicit relationship connectors');
-  assert(childGuideCounts.every((count) => count === 0), 'first-level branches do not add empty guide columns');
-  assert(connectorToggles.length === 4 && connectorRails.every(rail => !collectElements(rail).some(el => el.type === 'button')),
-    'each managed card has one disclosure and connector rails contain no duplicate control');
-  const rootToggleButton = connectorToggles[0];
-  assert(rootToggleButton?.props.children.at(-1)?.props.className === 'dac-lineage-card-chevron expanded',
-    'the only disclosure chevron is at the trailing end of the card');
-  rootToggleButton?.props.onClick();
-  assert(toggledConnectorId === 'root-connector', 'one disclosure controls its own card and branch');
-  assert(!connectorElements.some(el => el.type === 'details')
-    && connectorElements.filter(el => el.props?.className === 'dac-lineage-detail-copy').length === 4,
-    'expanded metadata uses the same disclosure as branches without nested details controls');
-  const collapsedConnectorTree = clientExports.__test.LineageTreeNodes?.({
-    nodes: connectorNodes,
-    collapsed: new Set(['root-connector']),
-    onToggle: () => {},
-    t: lineageT,
-  });
-  const collapsedRootToggle = collectElements(collapsedConnectorTree)
-    .find((element) => element.type === 'button' && element.props?.className === 'dac-lineage-card-toggle');
-  const collapsedRootIcon = collectElements(collapsedRootToggle)
-    .find((element) => element.type === 'span' && element.props?.className?.includes('dac-lineage-card-chevron'));
-  assert(collapsedRootToggle?.props?.['aria-expanded'] === false && collapsedRootIcon?.props?.className === 'dac-lineage-card-chevron'
-    && !collectElements(collapsedConnectorTree).some(el => el.props?.className === 'dac-lineage-detail-copy')
-    && collectElements(collapsedConnectorTree).filter(el => el.props?.role === 'listitem').length === 1,
-    'collapsed parent cards expose a downward accordion control');
-
-  const deepRenderedTree = clientExports.__test.LineageTreeNodes?.({
-    nodes: deepVisible,
-    collapsed: new Set(),
-    onToggle: () => {},
-    t: lineageT,
-  });
-  const deepRenderedItems = deepRenderedTree?.props?.children ?? [];
-  const deepestRenderedElements = collectElements(deepRenderedItems.at(-1));
-  const deepestGuides = deepestRenderedElements.filter((element) => element.props?.className?.split(' ').includes('dac-lineage-guide'));
-  assert(deepRenderedItems.length === 5000
-    && deepRenderedItems.at(-1)?.props?.['aria-level'] === 5000
-    && deepestGuides.length <= 2
-    && deepestRenderedElements.some((element) => element.props?.className === 'dac-lineage-guide-overflow'),
-  'deep lineage rendering stays iterative, preserves semantic depth, and keeps deep titles readable with at most two ancestor guide columns');
-
-  const untitledParent = {
-    id: 'parent-without-a-readable-title-1234567890', title: null, status: 'missing', origin: null, delegationDepth: 0, createdAt: 1,
-    children: [{ id: 'child-with-a-title', title: 'Readable child', status: 'archived', origin: null, delegationDepth: 0, createdAt: 2, children: [] }],
-  };
-  const zhUntitledSource = clientExports.__test.LineageTreeNodes?.({ nodes: [untitledParent], collapsed: new Set(), onToggle: () => {}, t: lineageT });
-  const englishLineageT = (key) => ({
-    'lineage.status.active': 'Source chat',
-    'lineage.status.archived': 'Archived',
-    'lineage.origin.session': 'Session',
-    'lineage.untitled': 'Untitled chat',
-    'lineage.sourceUnavailable': 'Source information unavailable',
-    'lineage.sourceContext': 'Source',
-    'lineage.contextOnly': 'Active chat, shown for relationship context only',
-    'lineage.start': 'Starting chat',
-    'lineage.created': 'Created',
-    'lineage.noBranches': 'No branches',
-    'lineage.copyId': 'Copy ID',
-    'locale.intl': 'en-US',
-  })[key] ?? key;
-  const enUntitledSource = clientExports.__test.LineageTreeNodes?.({ nodes: [untitledParent], collapsed: new Set(), onToggle: () => {}, t: englishLineageT });
-  const zhSourceLabels = collectElements(zhUntitledSource).filter((element) => element.props?.className === 'dac-lineage-source').map(elementText);
-  const enSourceLabels = collectElements(enUntitledSource).filter((element) => element.props?.className === 'dac-lineage-source').map(elementText);
-  assert(zhSourceLabels.some(label => label.includes('从「来源信息不可用」分出')) && enSourceLabels.some(label => label.includes('Branched from "Source information unavailable"')),
-  'unavailable parent relationships use an explicit source-information fallback instead of inventing an untitled chat');
-
-  assert(JSON.stringify(clientExports.__test.uniqueSessionIds?.(['b', '', 'a', 'b', null])) === '["b","a"]', 'trash ID normalization preserves unique request order');
-  const trashGroups = clientExports.__test.groupTrashSessions?.(trashRows);
-  assert(JSON.stringify(trashGroups?.map((group) => ({ key: group.key, ids: group.sessionIds }))) === JSON.stringify([
-    { key: 'ws-1', ids: ['session-a', 'session-c'] },
-    { key: '__ungrouped__', ids: ['session-b'] },
-  ]), 'trash grouping keeps first workspace order and row order');
-  assert(trashGroups?.[0]?.items?.[0]?.workspace?.path === undefined, 'trash client model never exposes workspace paths');
-  const statusT = (key) => key;
-  assert(clientExports.__test.trashStatusLabel?.(statusT, trashRows[0]) === 'trash.status.ready', 'ready trash status is localized');
-  assert(clientExports.__test.trashStatusLabel?.(statusT, trashRows[1]) === 'trash.status.degraded', 'degraded trash status is localized');
-  assert(clientExports.__test.trashStatusLabel?.(statusT, trashRows[2]) === 'trash.status.purgePending', 'purge-pending trash status is localized');
-
   assert(clientExports.__test.submitInteropFile === undefined, 'client test surface omits external import helpers');
   assert(clientExports.__test.submitInteropExportPreview === undefined && clientExports.__test.downloadInteropExport === undefined, 'client test surface omits external export helpers');
   globalThis.fetch = savedFetch;
@@ -2048,16 +1515,12 @@ console.log('\n[11] client half — settings section registration');
     'retired new-recycle copy is absent');
   assert(zhDict['group.collapse'] === '折叠' && zhDict['group.expand'] === '展开', 'collapse/expand labels present');
   assert(zhDict['export.all'] === '全部导出' && zhDict['export.selected'] === '导出选中', 'Chinese export actions are localized');
-  assert(zhDict['trash.status.legacy'] === undefined
-    && zhDict['trash.confirm.emptyBody'] === '这将永久删除回收站中所有工作区的会话和保护快照。',
-  'Chinese Recycle Bin copy has no retired legacy state');
+  assert(zhDict['tab.deletions'] === undefined && zhDict['tab.trash'] === undefined, 'Chinese navigation omits internal deletion and recovery pages');
   assert(clientCalls.localeRegister[0].dicts.en['export.row'] === undefined, 'single-chat export copy is removed');
   assert(clientCalls.localeRegister[0].dicts.en['nav'] === 'Archive Management'
     && clientCalls.localeRegister[0].dicts.en['page.title'] === 'Archive Management',
   'English archive management label and page title match the documented settings entry');
-  assert(clientCalls.localeRegister[0].dicts.en['trash.status.legacy'] === undefined
-    && clientCalls.localeRegister[0].dicts.en['trash.confirm.emptyBody'] === 'This permanently deletes the chats and protection snapshots from every workspace in the Recycle Bin.',
-  'English Recycle Bin copy has no retired legacy state');
+  assert(clientCalls.localeRegister[0].dicts.en['tab.deletions'] === undefined, 'English navigation omits internal deletion pages');
 	  assert(clientCalls.slotRegister.length === 1, `only the settings section registers (got ${clientCalls.slotRegister.length})`);
 	  const settingsRegistration = clientCalls.slotRegister.find((entry) => entry.meta?.name === 'settings.section');
 	  const overlayRegistration = clientCalls.slotRegister.find((entry) => entry.meta?.name === 'shell.overlay');
@@ -2080,14 +1543,20 @@ console.log('\n[11] client half — settings section registration');
   assert(style !== undefined, 'page stylesheet injected into <head>');
   assert(style?.attrs['data-plugin-css'] === 'dsh-archived-chats', 'stylesheet carries the data-plugin-css marker');
   assert(style?.textContent.includes('.dac-row'), 'stylesheet paints the chat rows');
+  assert(style?.textContent.includes('.dac-menu-item:disabled{opacity:.45;cursor:default}')
+    && style.textContent.includes('.dac-menu-item:hover:not(:disabled)')
+    && style.textContent.includes('.dac-menu-item.dac-danger:hover:not(:disabled)'),
+    'disabled bulk menu actions are visibly muted and never receive hover backgrounds');
   assert(
     /\.dac-title\{[^}]*flex:none[^}]*white-space:nowrap[^}]*\}/u.test(style?.textContent ?? ''),
     'page title stays on one line when header actions wrap',
   );
   assert(
-    style?.textContent.includes('.dac-intro-row{display:flex;align-items:center;justify-content:space-between;gap:6px 12px;flex-wrap:wrap}')
-      && style?.textContent.includes('.dac-intro-row .dac-head-actions{flex:0 0 164px;width:164px;'),
-    'description actions reserve stable space and can wrap on narrow layouts',
+    style?.textContent.includes('.dac-intro-row .dac-intro{flex:1;min-width:0;padding-right:196px}')
+      && style.textContent.includes('.dac-intro-row .dac-head-actions{position:absolute;right:0;top:50%;transform:translateY(-50%);width:184px;')
+      && style.textContent.includes('@container (max-width:376px)')
+      && style.textContent.includes('@container (max-width:492px)'),
+    'description controls preserve the Host text height and move below the copy in narrow panels',
   );
   assert(
     style?.textContent.includes('var(--dsw-alias-state-error-primary)')
@@ -2112,7 +1581,7 @@ console.log('\n[11] client half — settings section registration');
 }
 
 function renderTestComponent(node) {
-  if (!['NotePreview', 'HelpTooltip', 'SelectionCheckbox', 'ChatActionMenu', 'GroupSection', 'ArchiveDeleteButton', 'PreviewTitleButton'].includes(node.type.name)) return node.type(node.props ?? {});
+  if (!['NotePreview', 'HelpTooltip', 'SelectionCheckbox', 'ChatActionMenu', 'ToolbarMoreMenu', 'GroupSection', 'ArchiveDeleteButton', 'PreviewTitleButton', 'LineageCanvas'].includes(node.type.name)) return node.type(node.props ?? {});
   // A nested note owns hooks independently of the enclosing page/dialog.
   const savedHooks = { ...moduleTable.react };
   try { return createHookHarness(node.type).render(node.props ?? {}); }
@@ -2127,7 +1596,7 @@ function collectElements(node, result = []) {
   }
   if (typeof node !== 'object') return result;
   if (typeof node.type === 'function') {
-    result.push(node);
+    if (!['ControlButton', 'ControlButtonFallback', 'ControlInput', 'ControlInputFallback', 'HostModal', 'HostMenuSurface', 'HostMenuItem'].includes(node.type.name)) result.push(node);
     return collectElements(renderTestComponent(node), result);
   }
   result.push(node);
@@ -2579,12 +2048,13 @@ console.log('\n[11b] client half — simplified archive actions');
   const requests = [];
   globalThis.fetch = async (url, options = {}) => {
     const path = String(url);
+    if (path.endsWith('/deletion/preview')) return deletionPreviewFixture(options);
     if (options.method === 'POST') requests.push({ path, body: JSON.parse(options.body) });
     const payload = path.endsWith('/state')
-      ? { metadataStatus: 'ready', trashStatus: 'ready', sessions: archivedRows }
+      ? { metadataStatus: 'ready', deletionStatus: 'ready', sessions: archivedRows }
       : path.endsWith('/stats')
         ? { summary: { sessionCount: 3, totalBytes: 0, unavailableCount: 0 }, sessions: {} }
-        : path.endsWith('/delete-all')
+        : path.endsWith('/deletion/execute')
           ? { deleted: archivedRows.map((row) => row.id), pending: [], failed: [] }
           : {};
     return { ok: true, status: 200, json: async () => payload };
@@ -2608,22 +2078,22 @@ console.log('\n[11b] client half — simplified archive actions');
     'individual unarchive actions remain available');
   assert(elements.filter((element) => element.type === 'button' && element.props?.['aria-label'] === '删除已归档的聊天').length === 3,
     'individual permanent delete icons are directly available');
-  assert(elements.filter((element) => element.type === 'button' && element.props?.['aria-label'] === '…').length === 2,
+  assert(elements.filter((element) => element.type === 'button' && element.props?.['data-dac-workspace-menu'] === true).length === 2,
     'each workspace keeps its More menu');
 
-  deleteAll?.props.onClick();
+  await deleteAll?.props.onClick();
   tree = render();
   let dialog = findComponentElement(tree, 'ConfirmDialog');
   assert(dialog?.props.title === '删除所有已归档本地聊天？', 'global archive deletion has a specific confirmation title');
-  assert(String(dialog?.props.body).includes('2 个工作区') && String(dialog?.props.body).includes('3 个已归档聊天') && String(dialog?.props.body).includes('回收站不受影响'),
-    'global archive deletion explains its complete scope and Recycle Bin boundary');
+  assert(String(dialog?.props.body).includes('2 个工作区') && String(dialog?.props.body).includes('3 个已归档聊天') && String(dialog?.props.body).includes('此操作无法恢复'),
+    'global archive deletion explains its complete scope and irreversible effect');
   dialog?.props.onCancel();
   assert(requests.length === 0, 'cancelling global archive deletion sends no mutation');
-  collectElements(render()).find((element) => element.type === 'button' && elementText(element) === '全部删除')?.props.onClick();
+  await collectElements(render()).find((element) => element.type === 'button' && elementText(element) === '全部删除')?.props.onClick();
   dialog = findComponentElement(render(), 'ConfirmDialog');
   await dialog?.props.onConfirm();
-  assert(requests[0]?.path.endsWith('/delete-all') && requests[0]?.body.permanent === true
-    && requests[0]?.body.sessionIds.join(',') === 'session-a,session-b,session-c',
+  assert(requests[0]?.path.endsWith('/deletion/execute') && requests[0]?.body.permanent === true
+    && requests[0]?.body.sessions.map(row => row.sessionId).join(',') === 'session-a,session-b,session-c',
   'global archive deletion permanently targets every archived chat in list order');
 
   harness.unmount();
@@ -2642,11 +2112,12 @@ console.log('\n[11b-global-recycle] global actions retain the complete archive s
   const requests = [];
   globalThis.fetch = async (url, options = {}) => {
     const path = String(url);
-    if (path.endsWith('/delete-all') && options.method === 'POST') {
+    if (path.endsWith('/deletion/preview')) return deletionPreviewFixture(options);
+    if (path.endsWith('/deletion/execute') && options.method === 'POST') {
       const body = JSON.parse(options.body); requests.push(body);
-      return new Response(JSON.stringify({ deleted: body.sessionIds, failed: [] }));
+      return new Response(JSON.stringify({ deleted: body.sessionIds ?? body.sessions.map(row => row.sessionId), failed: [] }));
     }
-    const payload = path.endsWith('/state') ? { metadataStatus: 'ready', trashStatus: 'ready', sessions: rows } : {};
+    const payload = path.endsWith('/state') ? { metadataStatus: 'ready', deletionStatus: 'ready', sessions: rows } : {};
     return new Response(JSON.stringify(payload));
   };
   const t = clientCtx.locale.bind('settings.archived-chats');
@@ -2669,7 +2140,24 @@ console.log('\n[11b-global-recycle] global actions retain the complete archive s
     dialog?.props.onCancel();
   }
   assert(requests.length === 0, 'cancelled global confirmations do not mutate chats');
-  harness.unmount(); globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
+  harness.unmount();
+  rows.length = 0;
+  const emptyHarness = createHookHarness(clientCalls.slotRegister[0].component);
+  const renderEmpty = () => emptyHarness.render({ t, refreshSidebar: () => {} });
+  renderEmpty(); emptyHarness.flushEffects();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const emptyHead = collectElements(renderEmpty()).find(element => element.props?.className === 'dac-intro-row');
+  const emptyActions = collectElements(emptyHead).filter(element => element.type === 'button');
+  for (const label of ['全部导出', '全部取消归档', '全部删除']) {
+    const action = emptyActions.find(element => elementText(element) === label);
+    assert(action?.props.disabled === true, `${label} is disabled when the archive inventory is empty`);
+    action?.props.onClick();
+    assert(!findComponentElement(renderEmpty(), 'ConfirmDialog'), `${label} cannot open a confirmation with no target chats`);
+  }
+  assert(emptyActions.find(element => elementText(element) === '导入备份')?.props.disabled === false,
+    'an empty archive inventory keeps backup import available');
+  assert(requests.length === 0, 'empty archive bulk actions do not issue mutation requests');
+  emptyHarness.unmount(); globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
 }
 console.log('\n[11c] client half — archive insights UI');
 {
@@ -2703,16 +2191,16 @@ console.log('\n[11c] client half — archive insights UI');
   const states = [];
   const effectRecords = [];
 	// Positional pins into ArchivedChatsSection's useState order: sessions,
-	// tagFilter, metadataStatus, archiveTrashStatus, stats, metadataEdit, metaBusy.
+	// tagFilter, metadataStatus, archiveDeletionStatus, stats, metadataEdit, metaBusy.
 	// Adding a useState to that component shifts every pin after it, so re-derive
 	// these indices from the component whenever the list changes.
 	states[0] = { value: archivedRows, setter: null };
-	states[21] = { value: '', setter: null };
-	states[22] = { value: 'ready', setter: null };
-	states[23] = { value: 'ready', setter: null };
-	states[24] = { value: statsFixture, setter: null };
-	states[25] = { value: null, setter: null };
-	states[26] = { value: false, setter: null };
+	states[12] = { value: '', setter: null };
+	states[13] = { value: 'ready', setter: null };
+	states[14] = { value: 'ready', setter: null };
+	states[15] = { value: statsFixture, setter: null };
+	states[16] = { value: null, setter: null };
+	states[17] = { value: false, setter: null };
   const setterAt = (index) => (next) => {
     states[index].value = typeof next === 'function' ? next(states[index].value) : next;
   };
@@ -2782,7 +2270,7 @@ console.log('\n[11c] client half — archive insights UI');
 	  assert(elements.some((el) => el.props?.className === 'dac-toast' && elementText(el).includes('已开始下载备份')), 'export action announces that the download started');
 	  globalThis.fetch = savedUiExportFetch;
 	  windowMock.URL = savedUiExportUrl;
-	states[19].value = null;
+	states[10].value = null;
   tree = renderSection();
   elements = collectElements(tree);
 
@@ -2801,7 +2289,7 @@ console.log('\n[11c] client half — archive insights UI');
   const importInput = elements.find((el) => el.type === 'input' && el.props?.type === 'file' && el.props?.accept === '.zip,application/zip');
   assert(importInput?.props.accept === '.zip,application/zip' && importInput?.props.hidden === true, 'import file picker is hidden and accepts ZIP backups');
 
-	states[27].value = {
+	states[18].value = {
     token: 'token-ui',
     nonce: 'nonce-ui',
     package: { generator: { name: 'dsh-archived-chats', version: '0.8.0' }, version: 1, sessionCount: 2 },
@@ -2813,7 +2301,7 @@ console.log('\n[11c] client half — archive insights UI');
     selectedIds: ['new-session'],
     result: null,
   };
-	states[28].value = false;
+	states[19].value = false;
   tree = renderSection();
   elements = collectElements(tree);
   const importDialog = elements.find((el) => el.props?.role === 'dialog' && el.props?.['aria-labelledby'] === 'dac-import-title');
@@ -2824,10 +2312,10 @@ console.log('\n[11c] client half — archive insights UI');
   assert(importCheckboxes.some((checkbox) => checkbox.props.disabled === true && checkbox.props.checked === false), 'conflicting import rows are disabled and unselected');
   assert(importCheckboxes[2]?.props.disabled === true && importCheckboxes[2]?.props.checked === false, 'incompatible cwd import rows are disabled and unselected');
   assert(elementText(importDialog).includes('工作目录与当前系统不兼容'), 'import preview explains the cwd incompatibility');
-  states[27].value = { ...states[27].value, selectedIds: [] };
+  states[18].value = { ...states[18].value, selectedIds: [] };
   const selectRestorable = collectElements(renderSection()).find(el => el.type === 'button' && elementText(el) === '全选可恢复项');
   selectRestorable?.props.onClick();
-  assert(JSON.stringify(states[27].value.selectedIds) === JSON.stringify(['new-session']), 'select restorable excludes incompatible cwd rows');
+  assert(JSON.stringify(states[18].value.selectedIds) === JSON.stringify(['new-session']), 'select restorable excludes incompatible cwd rows');
   const restoreRequests = [];
   const savedImportFetch = globalThis.fetch;
   let finishRestore;
@@ -2851,7 +2339,7 @@ console.log('\n[11c] client half — archive insights UI');
   busyImportOverlay?.props.onClick();
   busyImportDialog?.props.onKeyDown?.({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
   busyImportCancel?.props.onClick();
-  assert(states[27].value !== null && busyImportCancel?.props.disabled === true,
+  assert(states[18].value !== null && busyImportCancel?.props.disabled === true,
     'pending import remains visible and cannot be dismissed by Cancel, Escape, or the backdrop');
   finishRestore?.();
   await restorePending;
@@ -2865,7 +2353,7 @@ console.log('\n[11c] client half — archive insights UI');
     && collectElements(completedImport).some((el) => el.type === 'button' && elementText(el) === '关闭'),
 	  'completed import keeps its localized title-publication limitation associated with a Close action');
 	  collectElements(completedImport).find((el) => el.type === 'button' && elementText(el) === '关闭')?.props.onClick();
-	  states[27].value = {
+	  states[18].value = {
 	    token: 'failed-token', nonce: 'failed-nonce', package: { version: 1, sessionCount: 1 },
 	    sessions: [{ id: 'failed-session', title: 'Failed restore', conflict: false, warnings: [] }],
 	    selectedIds: ['failed-session'], result: null, error: null,
@@ -2893,8 +2381,8 @@ console.log('\n[11c] client half — archive insights UI');
       `import errors map ${code} to actionable localized copy`);
   }
   globalThis.fetch = savedImportFetch;
-	states[27].value = null;
-	states[24].value = statsFixture;
+	states[18].value = null;
+	states[15].value = statsFixture;
   tree = renderSection();
   elements = collectElements(tree);
 
@@ -2903,12 +2391,12 @@ console.log('\n[11c] client half — archive insights UI');
   assert(tagSelect?.props.value === '', 'tag filter defaults to the non-colliding no-filter sentinel');
   const importantOptions = tagSelect?.props.options.filter((option) => option.label.toLowerCase() === 'important') ?? [];
   assert(importantOptions.length === 1, 'tag filter options de-duplicate labels case-insensitively');
-	states[21].value = 'all';
+	states[12].value = 'all';
   tree = renderSection();
   elements = collectElements(tree);
   const filteredRows = elements.filter(isRow);
   assert(filteredRows.length === 1 && elementText(filteredRows[0]).includes('Beta'), 'selecting the literal all tag renders only sessions carrying that tag');
-	states[21].value = '';
+	states[12].value = '';
   tree = renderSection();
   elements = collectElements(tree);
 
@@ -2998,11 +2486,11 @@ console.log('\n[11c] client half — archive insights UI');
     stopPropagation: () => { stoppedEscape = true; },
   });
   assert(preventedEscape && stoppedEscape, 'metadata dialog stops Escape before the host settings dialog sees it');
-	assert(states[25].value === null, 'metadata Escape cancels only the metadata editor state');
+	assert(states[16].value === null, 'metadata Escape cancels only the metadata editor state');
   cleanupMeta?.();
   assert(editFocuses === 1 && documentMock.activeElement === editTrigger, 'metadata dialog restores focus to its captured return target');
 
-	states[25].value = archivedRows[0];
+	states[16].value = archivedRows[0];
   tree = renderSection();
   elements = collectElements(tree);
 
@@ -3026,7 +2514,7 @@ console.log('\n[11c] client half — archive insights UI');
   busyMetadataOverlay?.props.onClick();
   busyMetadataDialog?.props.onKeyDown?.({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
   busyMetadataCancel?.props.onClick();
-  assert(states[25].value?.id === 'session-a' && busyMetadataCancel?.props.disabled === true,
+  assert(states[16].value?.id === 'session-a' && busyMetadataCancel?.props.disabled === true,
     'pending metadata save remains visible and cannot be dismissed by Cancel, Escape, or the backdrop');
   finishMetadataSave?.();
   await metadataPending;
@@ -3059,7 +2547,7 @@ console.log('\n[11c] client half — archive insights UI');
   // Exercise the real MetadataDialog with persistent hooks so token semantics,
   // IME input, and effect cleanup are verified across actual re-renders.
   const commaTagSession = { ...archivedRows[1], tags: ['research,2026'], note: '' };
-	states[25].value = commaTagSession;
+	states[16].value = commaTagSession;
   const rawSectionTree = renderSection();
   const metadataElement = findComponentElement(rawSectionTree, 'MetadataDialog');
   assert(metadataElement !== undefined, 'metadata dialog component is present in the real section tree');
@@ -3198,8 +2686,8 @@ console.log('\n[11c] client half — archive insights UI');
   else documentListeners.delete('keydown');
 
   // Unavailable metadata disables only metadata editing and shows a warning.
-	states[22].value = 'unavailable';
-	states[25].value = null;
+	states[13].value = 'unavailable';
+	states[16].value = null;
   tree = renderSection();
   elements = collectElements(tree);
   const unavailableMore = await openArchivePreviewHeader(renderSection, 'Alpha');
@@ -3211,22 +2699,22 @@ console.log('\n[11c] client half — archive insights UI');
 
   // An unreadable recycle catalog means the listing cannot be trusted to exclude
   // already-deleted chats, so it has to be labelled rather than shown as normal.
-	states[22].value = 'ready';
-	states[23].value = 'unavailable';
+	states[13].value = 'ready';
+	states[14].value = 'unavailable';
   tree = renderSection();
   elements = collectElements(tree);
   const trashWarn = elements.filter((el) => el.props?.className === 'dac-warn');
-  assert(trashWarn.length === 1 && elementText(trashWarn[0]).includes('回收站目录无法读取'),
+  assert(trashWarn.length === 1 && elementText(trashWarn[0]).includes('暂时无法核对删除状态'),
     'an unreadable recycle catalog is surfaced on the archived list');
   assert(elements.filter(isRow).length === 3, 'the warning never hides rows');
-	states[23].value = 'ready';
+	states[14].value = 'ready';
   tree = renderSection();
   assert(collectElements(tree).filter((el) => el.props?.className === 'dac-warn').length === 0,
     'a readable recycle catalog shows no warning');
 
   // Statistics failure never removes rows or lifecycle actions.
-	states[24].value = { status: 'error', summary: null, sessions: {} };
-	states[22].value = 'ready';
+	states[15].value = { status: 'error', summary: null, sessions: {} };
+	states[13].value = 'ready';
   tree = renderSection();
   elements = collectElements(tree);
   assert(elements.filter(isRow).length === 3, 'statistics failure keeps all rows rendered');
@@ -3685,51 +3173,15 @@ console.log('\n[11f] client half — recycle navigation and management');
   const requests = [];
   const archiveRows = [{ id: 'archive-a', title: 'Archived Alpha', createdAt: 10, origin: null, workspaceId: 'ws-1', workspaceTitle: '项目一' }];
   let lineagePayload = { roots: [], diagnostics: [], nodeCount: 0 };
-  let recycleRows = [
-    {
-      sessionId: 'trash-a', state: 'trashed', trashedAt: '2026-08-24T01:02:03.000Z', title: 'Trash Alpha',
-      createdAt: 10, workspace: { id: 'ws-1', title: '项目一' }, snapshotId: 'snapshot-a', snapshotBytes: 1536,
-      snapshotAttachmentCount: 2, liveDisposition: 'cold',
-    },
-    {
-      sessionId: 'trash-b', state: 'degraded', trashedAt: '2026-08-24T02:03:04.000Z', title: 'Trash Beta',
-      createdAt: 20, workspace: null, snapshotId: null, snapshotBytes: 0, snapshotAttachmentCount: 0, liveDisposition: 'parked',
-    },
-    {
-      sessionId: 'trash-project-purge', state: 'trashed', trashedAt: '2026-08-24T03:04:05.000Z', title: 'Trash Project Purge',
-      createdAt: 30, workspace: { id: 'ws-2', title: '项目二' }, snapshotId: 'snapshot-project', snapshotBytes: 512,
-      snapshotAttachmentCount: 1, liveDisposition: 'cold',
-    },
-    {
-      sessionId: 'trash-empty', state: 'trashed', trashedAt: '2026-08-24T04:05:06.000Z', title: 'Trash Empty',
-      createdAt: 40, workspace: { id: 'ws-3', title: '项目三' }, snapshotId: 'snapshot-empty', snapshotBytes: 256,
-      snapshotAttachmentCount: 0, liveDisposition: 'cold',
-    },
-  ];
+  const recycleRows = [];
   const responseFor = (payload) => ({ ok: true, status: 200, json: async () => payload });
   globalThis.fetch = async (url, options = {}) => {
     const path = String(url);
     requests.push({ path, options });
     if (path.endsWith('/state')) return responseFor({ metadataStatus: 'ready', sessions: archiveRows });
     if (path.endsWith('/stats')) return responseFor({ summary: { sessionCount: 1, totalBytes: 1, unavailableCount: 0 }, sessions: {} });
-    if (path.endsWith('/trash/restore')) {
-      const ids = JSON.parse(options.body).sessionIds;
-      recycleRows = recycleRows.filter((row) => !ids.includes(row.sessionId));
-      return responseFor({ restored: ids, failed: [], warnings: [] });
-    }
-    if (path.endsWith('/trash/purge')) {
-      const ids = JSON.parse(options.body).sessionIds;
-      recycleRows = recycleRows.filter((row) => !ids.includes(row.sessionId));
-      return responseFor({ purged: ids, failed: [] });
-    }
-    if (path.endsWith('/trash/empty')) {
-      const targets = JSON.parse(options.body).targets;
-      const purged = targets.map((target) => target.sessionId);
-      recycleRows = recycleRows.filter((row) => !purged.includes(row.sessionId));
-      return responseFor({ purged, failed: [] });
-    }
     if (path.endsWith('/lineage')) return responseFor(lineagePayload);
-    if (path.endsWith('/trash')) return responseFor({ trashStatus: 'ready', summary: { total: recycleRows.length }, sessions: recycleRows });
+    if (path.endsWith('/deletion-tasks')) return responseFor({ deletionStatus: 'ready', summary: { total: recycleRows.length }, sessions: recycleRows });
     if (path.endsWith('/preview')) return responseFor({ session: { id: 'trash-a', title: 'Trash Alpha' }, messages: [], total: 0, nextOffset: null });
     return responseFor({});
   };
@@ -3743,12 +3195,12 @@ console.log('\n[11f] client half — recycle navigation and management');
   harness.flushEffects();
   let elements = collectElements(tree);
   const tabs = elements.filter((element) => element.type === 'button' && element.props?.role === 'tab');
-  assert(tabs.map((tab) => elementText(tab)).join(',') === '已归档,未归档,回收站,来源与分支,关于',
+  assert(tabs.map((tab) => elementText(tab)).join(',') === '已归档,未归档,来源与分支,关于',
     'archive manager keeps management tabs before the final About tab');
   assert(tabs[0]?.props['aria-selected'] === true && tabs.slice(1).every((tab) => tab.props['aria-selected'] === false), 'Archived is the default selected tab');
   assert(requests.every((request) => !request.path.includes('/history')), 'retired History API is never requested');
 
-  for (const [index, actionCount] of [[0, 5], [1, 2], [2, 2], [3, 0], [4, 0]]) {
+  for (const [index, actionCount] of [[0, 5], [1, 2], [2, 0], [3, 0]]) {
     if (!tabs[index]) { assert(false, `tab ${index} exists`); continue; }
     tabs[index].props.onClick();
     const modeTree = harness.render({ t, refreshSidebar: () => {} });
@@ -3773,8 +3225,9 @@ console.log('\n[11f] client half — recycle navigation and management');
     && expandedHeading?.props['aria-label'] === '折叠: 项目一',
   'archive workspace heading names the workspace and expanded state accessibly');
   assert(!collectElements(expandedHeading).some((item) => item.type?.name === 'IconChevron')
-    && expandedFolder?.props.width === 18 && expandedFolder?.props.strokeWidth === 1.6,
-  'archive workspace heading uses one larger folder with regular strokes and no separate chevron');
+    && expandedFolder?.props.width === 16 && expandedFolder?.props.strokeWidth === 1.6
+    && collectElements(expandedHeading).some(item => item.props?.className === 'dac-workspace-disclosure' && item.props['data-open'] === true),
+  'workspace heading shares one icon slot for the resting folder and hover triangle');
   expandedHeading?.props.onClick();
   tree = harness.render({ t, refreshSidebar: () => {} });
   const collapsedHeading = archiveHeading(tree);
@@ -3789,6 +3242,16 @@ console.log('\n[11f] client half — recycle navigation and management');
   tree = harness.render({ t, refreshSidebar: () => {} });
   assert(elementText(tree).includes('Archived Alpha') && archiveHeading(tree)?.props['aria-expanded'] === true,
     'clicking the folder heading again restores the archived chats');
+  const sharedWorkspaceHead = collectElements(tree).find(item => item.props?.className === 'dac-group-head'
+    && collectElements(item).some(child => child.props?.['aria-label'] === '折叠: 项目一'));
+  sharedWorkspaceHead?.props.onClick({ target: { closest: () => ({}) } });
+  assert(elementText(harness.render({ t, refreshSidebar: () => {} })).includes('Archived Alpha'),
+    'workspace action buttons do not also toggle the group through the row handler');
+  sharedWorkspaceHead?.props.onClick({ target: { closest: () => null } });
+  tree = harness.render({ t, refreshSidebar: () => {} });
+  assert(!elementText(tree).includes('Archived Alpha'), 'clicking workspace header background toggles the group');
+  archiveHeading(tree)?.props.onClick();
+  tree = harness.render({ t, refreshSidebar: () => {} });
 
   const RelationshipsPanel = clientExports.__test.ArchiveRelationshipsPanel;
   if (typeof RelationshipsPanel !== 'function') {
@@ -3804,7 +3267,7 @@ console.log('\n[11f] client half — recycle navigation and management');
     assert(scopeHelp?.props.children === t('lineage.scopeNote')
       && !relationshipElements.some(element => element.props?.role === 'tooltip'),
       'origins scope explanation is available as help rather than a permanent paragraph');
-    assert(elementText(relationshipsTree).includes('暂无归档会话的来源与分支'),
+    assert(elementText(relationshipsTree).includes('暂无会话'),
       'origins and branches view has a scoped empty state');
     relationshipsHarness.unmount();
 
@@ -3815,7 +3278,7 @@ console.log('\n[11f] client half — recycle navigation and management');
     await new Promise((resolve) => setTimeout(resolve, 0));
     const emptyWorkspaceTree = emptyWorkspaceHarness.render({ t });
     assert(!elementText(emptyWorkspaceTree).includes('Empty official workspace')
-      && !collectElements(emptyWorkspaceTree).some(el => el.props?.className === 'dac-lineage-workspace-toggle'),
+      && !collectElements(emptyWorkspaceTree).some(el => el.props?.className?.includes('dac-lineage-workspace-toggle')),
       'empty official workspaces are excluded from archive relationships');
     const emptyWorkspaceFilter = collectElements(emptyWorkspaceTree).find(el => el.type?.name === 'FilterSelect' && el.props.ariaLabel === t('lineage.projectFilter'));
     assert(!emptyWorkspaceFilter?.props.options.some(option => option.value === 'empty-official'),
@@ -3890,10 +3353,11 @@ console.log('\n[11f] client half — recycle navigation and management');
     const leafFoldIcon = collectElements(leafFold)
       .find((element) => element.type === 'span' && element.props?.className?.includes('dac-chev'));
     const leafWorkspaceFilter = collectElements(leafFilterActions).find(element => element.type?.name === 'FilterSelect');
-    assert(leafFilterMenus.length === 1 && leafFilterMenus[0].props.ariaLabel === '筛选项目',
-      'workspace is the only relationship filter');
-    assert(leafFold?.props.disabled === false && elementText(leafFold) === '全部展开',
-      'leaf metadata starts collapsed and can be expanded together with the workspace');
+    assert(leafFilterMenus.length === 2 && leafFilterMenus.some(item => item.props.ariaLabel === '筛选项目')
+      && leafFilterMenus.some(item => item.props.ariaLabel === '筛选状态'),
+      'relationship list offers workspace and status filters');
+    assert(leafFold?.props.disabled === false && elementText(leafFold) === '全部折叠',
+      'workspace is initially open with node metadata visible');
     assert(leafRelationshipElements.some(el => el.props?.className?.includes('dac-lineage-row-active')),
       'a source remains visible before the managed leaf is expanded');
     leafRelationshipsHarness.unmount();
@@ -3908,7 +3372,7 @@ console.log('\n[11f] client half — recycle navigation and management');
               { id: 'alpha-needle', title: 'Needle chat', status: 'archived', origin: null, delegationDepth: 0, createdAt: 3, workspace: { id: 'ws-alpha', title: 'Project Alpha' }, children: [] },
             ],
           },
-          { id: 'beta-branch', title: 'Beta branch', status: 'trash', origin: null, delegationDepth: 0, createdAt: 4, workspace: { id: 'ws-beta', title: 'Project Beta' }, children: [] },
+          { id: 'beta-branch', title: 'Beta branch', status: 'active', origin: null, delegationDepth: 0, createdAt: 4, workspace: { id: 'ws-beta', title: 'Project Beta' }, children: [] },
         ],
       }],
       diagnostics: [],
@@ -3927,22 +3391,51 @@ console.log('\n[11f] client half — recycle navigation and management');
     assert(richRelationshipElements.some((element) => element.props?.role === 'list')
       && !richRelationshipElements.some((element) => ['tree', 'treeitem'].includes(element.props?.role)),
     'relationship hierarchy uses native list and disclosure semantics instead of an incomplete ARIA tree widget');
-    assert(initialRelationshipItems.length === 5
+    assert(initialRelationshipItems.length === 4
       && projectSelect.props.options.some(option => option.label === 'Project Alpha') && projectSelect.props.options.some(option => option.label === 'Project Beta')
-      && statusSelect === undefined && elementText(richRelationshipsTree).includes('4 个会话'),
+      && statusSelect?.props.value === 'all' && elementText(richRelationshipsTree).includes('4 个会话'),
     'lineage counts each official chat once and excludes cross-workspace reference copies');
+    assert(projectSelect.props.options[0].label === '所有工作区'
+      && statusSelect?.props.options.map(option => option.value).join(',') === 'all,archived,active',
+      'relationship filters cover all workspaces and both archive states');
+    statusSelect?.props.onChange('archived');
+    let statusTree = richRelationshipsHarness.render({ t });
+    let statusRows = collectElements(statusTree).filter(element => element.props?.role === 'listitem');
+    assert(statusRows.length === 2 && statusRows.every(row => row.props.className.includes('dac-lineage-row-archived'))
+      && elementText(statusTree).includes('当前结果：2 个会话'),
+      'archived status filters list rows and counts without listing source context');
+    collectElements(statusTree).find(element => element.props?.className?.includes('dac-lineage-open-graph'))?.props.onClick();
+    statusTree = richRelationshipsHarness.render({ t });
+    const statusGraph = findComponentElement(statusTree, 'LineageCanvas');
+    assert(statusGraph?.props.nodes[0].status === 'active' && statusGraph.props.nodes[0].children.length === 2,
+      'status filtering preserves the unarchived source and sibling in the complete graph');
+    statusGraph?.props.onClose();
+    statusSelect?.props.onChange('active');
+    statusTree = richRelationshipsHarness.render({ t });
+    statusRows = collectElements(statusTree).filter(element => element.props?.role === 'listitem');
+    assert(statusRows.length === 2 && statusRows.every(row => row.props.className.includes('dac-lineage-row-active')),
+      'unarchived status shows only unarchived list rows');
+    projectSelect.props.onChange('ws-alpha');
+    statusTree = richRelationshipsHarness.render({ t });
+    assert(collectElements(statusTree).filter(element => element.props?.role === 'listitem').length === 0
+      && elementText(statusTree).includes('暂无符合条件的会话'),
+      'combined workspace and status filters show a clear empty result');
+    projectSelect.props.onChange('all');
+    statusSelect?.props.onChange('all');
+    richRelationshipsTree = richRelationshipsHarness.render({ t });
     const initialFoldIcon = collectElements(foldAll)
       .find((element) => element.type === 'span' && element.props?.className?.includes('dac-chev'));
     assert(richRelationshipElements.filter((element) => element.type === 'button' && element.props?.className === 'dac-lineage-fold').length === 1
-      && elementText(foldAll) === '全部展开' && initialFoldIcon?.props?.className === 'dac-chev open',
-    'lineage starts with roots visible and deeper branches folded even for small trees');
+      && elementText(foldAll) === '全部折叠' && initialFoldIcon?.props?.className === 'dac-chev collapse',
+    'workspace graph starts with every real branch visible');
 
-    foldAll?.props.onClick();
     richRelationshipsTree = richRelationshipsHarness.render({ t });
     richRelationshipElements = collectElements(richRelationshipsTree);
-    assert(richRelationshipElements.filter((element) => element.props?.role === 'listitem').length === 6,
-      'expand all reveals every branch and its source context');
-    const workspaceHeaders = richRelationshipElements.filter((element) => element.props?.className === 'dac-lineage-workspace-toggle');
+    assert(richRelationshipElements.filter((element) => element.props?.role === 'listitem').length === 4,
+      'the outer list shows each chat only in its own workspace');
+    assert(!richRelationshipElements.some(element => element.type?.name === 'LineageCanvas'),
+      'the initial workspace list does not mount relationship canvases');
+    const workspaceHeaders = richRelationshipElements.filter((element) => element.props?.className?.includes('dac-lineage-workspace-toggle'));
     const alphaWorkspaceHeader = workspaceHeaders.find(header => elementText(header).includes('Project Alpha'));
     assert(workspaceHeaders.length === 3
       && alphaWorkspaceHeader
@@ -3979,39 +3472,46 @@ console.log('\n[11f] client half — recycle navigation and management');
     richRelationshipElements.find((element) => element.props?.className === 'dac-lineage-fold')?.props.onClick();
     richRelationshipsTree = richRelationshipsHarness.render({ t });
     assert(collectElements(richRelationshipsTree).filter((element) => element.props?.role === 'listitem').length === 0
-      && collectElements(richRelationshipsTree).filter((element) => element.props?.className === 'dac-lineage-workspace-toggle').length === 3,
+      && collectElements(richRelationshipsTree).filter((element) => element.props?.className?.includes('dac-lineage-workspace-toggle')).length === 3,
       'collapse all leaves only workspace headings visible');
     collectElements(richRelationshipsTree).find((element) => element.props?.className === 'dac-lineage-fold')?.props.onClick();
     richRelationshipsTree = richRelationshipsHarness.render({ t });
     richRelationshipElements = collectElements(richRelationshipsTree);
 
-    const rootToggle = richRelationshipElements.find((element) => element.type === 'button' && element.props?.className === 'dac-lineage-card-toggle' && element.props['aria-label'] === '折叠 Alpha branch');
-    rootToggle?.props.onClick();
+    assert(!richRelationshipElements.some(element => element.props?.className === 'dac-lineage-card-toggle'),
+      'node disclosure controls are absent; workspace controls own folding');
+    const relationshipSearch = richRelationshipElements.find(element => element.type === 'input');
+    relationshipSearch.props.onChange({ target: { value: 'Needle' } });
     richRelationshipsTree = richRelationshipsHarness.render({ t });
-    richRelationshipElements = collectElements(richRelationshipsTree);
-    const relationshipSearch = richRelationshipElements.find((element) => element.type === 'input' && element.props?.placeholder === '搜索会话或项目');
-    assert(richRelationshipElements.filter((element) => element.props?.role === 'listitem').length === 5,
-      'individual branch collapse hides its descendants while retaining source context');
-    relationshipSearch?.props.onChange({ target: { value: 'Needle' } });
+    assert(elementText(richRelationshipsTree).includes('Needle chat') && elementText(richRelationshipsTree).includes('Alpha branch'),
+      'search keeps the direct source description alongside the matching chat');
+    relationshipSearch.props.onChange({ target: { value: '' } });
     richRelationshipsTree = richRelationshipsHarness.render({ t });
-    const searchRelationshipElements = collectElements(richRelationshipsTree);
-    const searchFoldControls = searchRelationshipElements.filter((element) => element.type === 'button'
-      && ['dac-lineage-card-toggle', 'dac-lineage-fold'].includes(element.props?.className));
-    assert(elementText(richRelationshipsTree).includes('Needle chat'), 'lineage search automatically reveals a matching path inside a collapsed branch');
-    assert(searchFoldControls.length > 0 && searchFoldControls.every((button) => button.props.disabled === true),
-      'search-expanded relationship paths disable fold controls that cannot visibly take effect');
-    relationshipSearch?.props.onChange({ target: { value: '' } });
-    richRelationshipsTree = richRelationshipsHarness.render({ t });
-    assert(!elementText(richRelationshipsTree).includes('Needle chat'), 'clearing lineage search restores the user\'s previous collapsed state');
+    assert(elementText(richRelationshipsTree).includes('Needle chat') && elementText(richRelationshipsTree).includes('Beta branch'),
+      'clearing search restores the full workspace graphs');
 
-    const expandAfterSearch = collectElements(richRelationshipsTree).find((element) => element.type === 'button' && elementText(element) === '全部展开');
-    expandAfterSearch?.props.onClick();
     projectSelect?.props.onChange('ws-beta');
     richRelationshipsTree = richRelationshipsHarness.render({ t });
     const projectFilteredText = elementText(richRelationshipsTree);
     assert(projectFilteredText.includes('Source root') && projectFilteredText.includes('Beta branch')
       && !projectFilteredText.includes('Alpha branch') && !projectFilteredText.includes('Needle chat'),
     'lineage project selection keeps ancestor context without duplicating unrelated project branches');
+    const graphButton = collectElements(richRelationshipsTree).find(element => element.props?.className?.includes('dac-lineage-open-graph'));
+    graphButton.props.onClick();
+    richRelationshipsTree = richRelationshipsHarness.render({ t });
+    const graph = findComponentElement(richRelationshipsTree, 'LineageCanvas');
+    assert(graph?.props.focusId === 'beta-branch' && graph.props.nodes[0].id === 'source-root'
+      && graph.props.nodes[0].children.length === 2,
+      'a filtered workspace opens the complete original relationship family across workspaces');
+    assert(collectElements(richRelationshipsTree).some(element => element.props?.role === 'dialog')
+      && elementText(richRelationshipsTree).includes('Needle chat'),
+      'relationship dialog directly displays every family node without disclosure controls');
+    graph.props.onClose();
+    richRelationshipsTree = richRelationshipsHarness.render({ t });
+    assert(!findComponentElement(richRelationshipsTree, 'LineageCanvas')
+      && findComponentElement(richRelationshipsTree, 'FilterSelect').props.value === 'ws-beta'
+      && !elementText(richRelationshipsTree).includes('Alpha branch'),
+      'returning from the graph retains the workspace filter and original list');
     richRelationshipsHarness.unmount();
 
     lineagePayload = {
@@ -4030,195 +3530,63 @@ console.log('\n[11f] client half — recycle navigation and management');
     largeRelationshipsHarness.flushEffects();
     await new Promise((resolve) => setTimeout(resolve, 0));
     const largeRelationshipsTree = largeRelationshipsHarness.render({ t });
-    assert(collectElements(largeRelationshipsTree).filter((element) => element.props?.role === 'listitem').length === 1,
-      'lineage trees over fifty nodes default their roots to collapsed');
+    assert(collectElements(largeRelationshipsTree).filter((element) => element.props?.role === 'listitem').length === 51,
+      'large workspace lists show all chats without node-level folding');
     largeRelationshipsHarness.unmount();
+
+    lineagePayload = { roots: [
+      { id: 'family-a', title: 'Family A', status: 'archived', children: [
+        { id: 'family-child', title: 'Family child', status: 'active', origin: 'subagent', children: [] },
+      ] },
+      { id: 'independent', title: 'Independent', status: 'archived', children: [] },
+      { id: 'session-inherited-history-without-parent-1234567890', title: 'Inherited chat', createdAt: 1700000000000, status: 'archived', isSeeded: true, parentSession: null, children: [] },
+    ], diagnostics: [], nodeCount: 4 };
+    const familyHarness = createHookHarness(RelationshipsPanel);
+    familyHarness.render({ t }); familyHarness.flushEffects();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    let familyTree = familyHarness.render({ t });
+    const familyElements = collectElements(familyTree);
+    const seedRow = familyElements.find(element => element.props?.role === 'listitem' && elementText(element).includes('Inherited chat'));
+    assert(elementText(seedRow).includes('未记录来源会话') && !elementText(seedRow).includes('来源信息不可用')
+      && !collectElements(seedRow).some(element => element.props?.className?.includes('dac-lineage-open-graph')),
+      'inherited history without a recorded parent is explained without implying missing content or inventing a graph');
+    assert(collectElements(seedRow).some(element => element.type?.name === 'PreviewTitleButton'),
+      'lineage titles reuse the shared preview control and its hover and focus behavior');
+    const seedId = lineagePayload.roots[2].id;
+    assert(elementText(seedRow).includes('创建于') && elementText(seedRow).includes('2023')
+      && elementText(seedRow).includes('ID: ') && !elementText(seedRow).includes(seedId)
+      && collectElements(seedRow).some(element => element.props?.title === seedId),
+      'relationship rows show creation time and a compact ID with the full value available');
+    assert(familyElements.find(element => element.type === 'input').props.placeholder === '搜索会话标题、工作区和 ID',
+      'relationship search describes its actual title, workspace and ID scope');
+    const savedNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    let copiedId;
+    try {
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: { writeText: async value => { copiedId = value; } } } });
+      await collectElements(seedRow).find(element => element.props?.['aria-label'] === `复制 ID ${seedId}`).props.onClick();
+      const copiedTree = familyHarness.render({ t });
+      assert(copiedId === seedId && collectElements(copiedTree).some(element => element.props?.['aria-label'] === `已复制 ${seedId}`)
+        && !findComponentElement(copiedTree, 'LineageCanvas'),
+        'list copy writes the full ID and confirms success without opening the graph');
+    } finally {
+      if (savedNavigator === undefined) delete globalThis.navigator;
+      else Object.defineProperty(globalThis, 'navigator', savedNavigator);
+    }
+    assert(elementText(familyTree).includes('子智能体来源：Family A'),
+      'the outer list distinguishes delegated subagents from ordinary forks');
+    assert(familyElements.filter(element => element.props?.className?.includes('dac-lineage-open-graph')).length === 2
+      && elementText(familyTree).includes('独立会话'),
+      'independent chats have no empty relationship action while both related chats do');
+    familyElements.find(element => element.props?.className?.includes('dac-lineage-open-graph')).props.onClick();
+    familyTree = familyHarness.render({ t });
+    const familyGraph = findComponentElement(familyTree, 'LineageCanvas');
+    assert(familyGraph.props.nodes.length === 1 && familyGraph.props.nodes[0].id === 'family-a'
+      && !elementText(familyGraph).includes('Independent'),
+      'the relationship dialog excludes unrelated chats in the same workspace');
+    familyHarness.unmount();
   }
 
   tabs.find((tab) => elementText(tab) === t('tab.trash'))?.props.onClick();
-
-  let recycleSidebarRefreshes = 0;
-  const recycleProps = { t, refreshSidebar: () => { recycleSidebarRefreshes += 1; } };
-  tree = harness.render(recycleProps);
-  harness.flushEffects();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  tree = harness.render(recycleProps);
-  harness.flushEffects();
-  elements = collectElements(tree);
-  assert(requests.filter((request) => request.path.endsWith('/trash')).length === 1, 'first Recycle Bin activation loads trash once');
-  assert(elements.some((element) => element.type === 'button' && element.props?.role === 'tab' && element.props?.['aria-selected'] === true && elementText(element) === '回收站'), 'Recycle Bin tab becomes selected');
-
-  const trashHead = elements.find((element) => element.props?.className === 'dac-intro-row');
-  const trashTabs = elements.find((element) => element.props?.className === 'dac-tabs');
-  const emptyButton = collectElements(trashHead).find((element) => element.type === 'button' && elementText(element) === '清空回收站');
-  assert(elementText(trashHead).startsWith(t('page.description')) && emptyButton !== undefined
-    && !collectElements(trashTabs).some((element) => elementText(element) === '清空回收站'),
-  'Empty Recycle Bin action sits beside the description, outside the tablist');
-  const trashHeaderButtons = collectElements(trashHead).filter((element) => element.type === 'button' && element.props?.role !== 'tab');
-  assert(trashHeaderButtons.map(elementText).join(',') === '全部恢复,清空回收站'
-    && !collectElements(trashHead).some((element) => element.type === 'details' || element.type?.name === 'ChatActionMenu')
-    && !collectElements(trashHeaderButtons[0]).some((element) => element.type === 'svg' || element.type?.name === 'IconRestore'),
-  'Recycle Bin exposes text-only Restore all and Empty directly, without a one-item More menu');
-  assert(emptyButton?.props.className.includes('dac-danger'), 'direct Empty Recycle Bin retains destructive styling');
-  assert(!elements.some((element) => element.type === 'input' && element.props?.type === 'checkbox')
-    && !elements.some((element) => element.type === 'button' && elementText(element) === '批量选择')
-    && !elements.some((element) => element.props?.className === 'dac-bulkbar'),
-  'Recycle Bin removes batch-selection controls, row checkboxes, and bulk bars');
-
-  assert(elementText(tree).includes('Trash Alpha') && elementText(tree).includes('Trash Beta')
-    && !elementText(tree).includes('Legacy Alpha') && elementText(tree).includes('项目一'),
-    'Recycle Bin renders only chats explicitly moved there');
-  assert(elementText(tree).includes('1.5 KB') && elementText(tree).includes('2 个附件'),
-    'Recycle Bin renders bounded snapshot size and attachment metadata');
-  assert(elementText(tree).includes('保护快照可用') && !elementText(tree).includes('旧版恢复副本') && elementText(tree).includes('快照降级'),
-    'Recycle Bin distinguishes normal and degraded chat records without a legacy-copy state');
-
-  const visibleTrashRows = elements.filter((element) => element.props?.className === 'dac-row dac-trash-row');
-  const trashRowActionButtons = visibleTrashRows.flatMap((row) => collectElements(row).filter((element) => element.type === 'button'));
-  const restoreTextButtons = trashRowActionButtons.filter((button) => button.props?.['aria-label'] === '恢复');
-  const purgeTextButtons = trashRowActionButtons.filter((button) => button.props?.['aria-label'] === '永久删除');
-  assert(restoreTextButtons.length === visibleTrashRows.length && purgeTextButtons.length === visibleTrashRows.length
-    && restoreTextButtons.every((button) => elementText(button) === '恢复' && button.props.className === 'dac-unarchive')
-    && purgeTextButtons.every((button) => elementText(button) === '删除' && button.props.className === 'dac-unarchive dac-danger')
-    && visibleTrashRows.every((row) => {
-      const actions = collectElements(row).filter((element) => element.type === 'button');
-      return actions.length === 4 && actions[0].props.className === 'dac-row-title dac-row-open'
-        && elementText(actions[1]) === '恢复' && elementText(actions[2]) === '导出快照' && elementText(actions[3]) === '删除';
-    }),
-  'Recycle Bin titles open previews while row actions retain Restore and Delete');
-
-  const trashGroup = (title) => collectElements(harness.render(recycleProps)).find((element) => element.props?.className?.split(' ').includes('dac-trash-group')
-    && elementText(element).includes(title));
-  const openTrashGroupMenu = (title) => {
-    const group = trashGroup(title);
-    collectElements(group).find((element) => element.type === 'button' && element.props?.['aria-label'] === `更多聊天操作: ${title}`)?.props.onClick();
-    return collectElements(trashGroup(title));
-  };
-  let trashMenuElements = openTrashGroupMenu('项目一');
-  assert(trashMenuElements.filter((element) => element.props?.role === 'menuitem').map(elementText).join(',') === '全部恢复,全部删除',
-    'Recycle Bin project menu orders restore before permanent deletion');
-  trashMenuElements.find((element) => element.props?.role === 'menuitem' && elementText(element) === '全部删除')?.props.onClick();
-  let groupPurgeDialog = findComponentElement(harness.render(recycleProps), 'ConfirmDialog');
-  assert(groupPurgeDialog?.props.title === '删除该工作区的全部回收站聊天？'
-    && groupPurgeDialog.props.body.includes('项目一') && groupPurgeDialog.props.body.includes('1 个聊天')
-    && groupPurgeDialog.props.body.includes('无法撤销'), 'Recycle Bin project purge names workspace, count, and irreversible consequence');
-  groupPurgeDialog?.props.onCancel();
-
-  trashMenuElements = openTrashGroupMenu('项目二');
-  trashMenuElements.find((element) => element.props?.role === 'menuitem' && elementText(element) === '全部删除')?.props.onClick();
-  groupPurgeDialog = findComponentElement(harness.render(recycleProps), 'ConfirmDialog');
-  await groupPurgeDialog?.props.onConfirm();
-  assert(requests.some((request) => request.path.endsWith('/trash/purge')
-      && request.options.body === '{"sessionIds":["trash-project-purge"]}')
-    && !elementText(harness.render(recycleProps)).includes('Trash Project Purge'),
-  'Recycle Bin project purge permanently deletes exactly that project');
-
-  trashMenuElements = openTrashGroupMenu('未分组');
-  const restoreCountBeforeConfirm = requests.filter(request => request.path.endsWith('/trash/restore')).length;
-  await trashMenuElements.find((element) => element.props?.role === 'menuitem' && elementText(element) === '全部恢复')?.props.onClick();
-  const workspaceRestoreDialog = findComponentElement(harness.render(recycleProps), 'ConfirmDialog');
-  assert(requests.filter(request => request.path.endsWith('/trash/restore')).length === restoreCountBeforeConfirm,
-    'workspace Restore all waits for confirmation before mutating');
-  assert(workspaceRestoreDialog?.props.body.includes('未分组') && workspaceRestoreDialog.props.body.includes('1 个')
-    && workspaceRestoreDialog.props.body.includes('已归档') && workspaceRestoreDialog.props.body.includes('主聊天列表'),
-  'workspace restore confirmation names exact scope and archive destination');
-  await workspaceRestoreDialog?.props.onConfirm();
-  const projectRestoreRequest = requests.findLast((request) => request.path.endsWith('/trash/restore'));
-  const afterProjectRestoreText = elementText(harness.render(recycleProps));
-  assert(projectRestoreRequest?.options.body === '{"sessionIds":["trash-b"]}',
-    `Recycle Bin project restore targets only restorable chats (got ${projectRestoreRequest?.options.body ?? 'no request'})`);
-  assert(!afterProjectRestoreText.includes('Trash Beta'),
-    'Recycle Bin project restore returns a degraded chat to the archive when its original still exists');
-  assert(afterProjectRestoreText.includes('未分组') && afterProjectRestoreText.includes('1 个聊天恢复到已归档'),
-    'workspace restore result names its scope, actual restored count, and destination');
-
-  const savedFeedbackTimeout = globalThis.setTimeout;
-  const savedFeedbackClear = globalThis.clearTimeout;
-  const feedbackTimers = new Map();
-  globalThis.setTimeout = (fn, delay) => { const id = {}; feedbackTimers.set(id, { fn, delay }); return id; };
-  globalThis.clearTimeout = id => feedbackTimers.delete(id);
-  try {
-    tree = harness.render(recycleProps); harness.flushEffects();
-    const expiry = [...feedbackTimers.values()].find(timer => timer.delay === 4000);
-    assert(!!expiry && collectElements(tree).some(el => el.props?.className === 'dac-toast'
-      && typeof el.props.onMouseEnter === 'function' && typeof el.props.onFocus === 'function'),
-    'actual workspace restore wires a pausable auto-dismiss toast');
-    expiry?.fn();
-    assert(!collectElements(harness.render(recycleProps)).some(el => el.props?.className === 'dac-toast'),
-      'workspace restore success disappears on expiry, including its view-archived action');
-    harness.flushEffects();
-  } finally { globalThis.setTimeout = savedFeedbackTimeout; globalThis.clearTimeout = savedFeedbackClear; }
-
-  tree = harness.render(recycleProps);
-  elements = collectElements(tree);
-
-  const collapseProject = elements.find((element) => element.type === 'button' && element.props?.['aria-label'] === '折叠: 项目一' && elementText(element).includes('项目一'));
-  assert(collapseProject?.props['aria-expanded'] === true, 'Recycle Bin project group starts expanded');
-  assert(collapseProject?.props.className.includes('dac-archive-group-toggle')
-    && !collectElements(collapseProject).some(el => el.props?.className?.includes('dac-chev')),
-  'Recycle Bin workspace uses the shared folder toggle without an extra chevron');
-  collapseProject?.props.onClick();
-  tree = harness.render(recycleProps);
-  elements = collectElements(tree);
-  assert(!elementText(tree).includes('Trash Alpha'), 'collapsing a Recycle Bin project hides every row in that project');
-  assert(JSON.parse(storageMap.get('dsh-archived-chats:collapsed') ?? '{}')['trash:ws-1'] === true, 'Recycle Bin collapse preference uses a tab-specific key');
-  elements.find((element) => element.type === 'button' && element.props?.['aria-label'] === '展开: 项目一' && elementText(element).includes('项目一'))?.props.onClick();
-  tree = harness.render(recycleProps);
-  elements = collectElements(tree);
-
-  const ordinaryPreview = elements.find((element) => element.type === 'button' && element.props?.['aria-label'] === '查看对话 Trash Alpha');
-  await ordinaryPreview?.props.onClick();
-  const previewRequest = requests.findLast((request) => request.path.endsWith('/preview'));
-  assert(JSON.parse(previewRequest?.options.body ?? '{}').scope === 'trash', 'ordinary Recycle Bin preview is explicitly trash-scoped');
-  assert(JSON.parse(previewRequest?.options.body ?? '{}').sessionId === 'trash-a'
-    && elementText(ordinaryPreview) === 'Trash Alpha'
-    && typeof ordinaryPreview?.props.onFocus === 'function' && typeof ordinaryPreview?.props.onMouseEnter === 'function',
-  'clicking a Recycle Bin title previews that chat and offers keyboard and hover feedback');
-  findComponentElement(harness.render(recycleProps), 'PreviewDialog')?.props.onCancel();
-
-  tree = harness.render(recycleProps);
-  elements = collectElements(tree);
-  const ordinaryRestore = elements.find((element) => element.type === 'button'
-    && element.props?.['data-session-id'] === 'trash-a' && element.props?.['aria-label'] === '恢复');
-  await ordinaryRestore?.props.onClick();
-  tree = harness.render(recycleProps);
-  elements = collectElements(tree);
-  assert(requests.some((request) => request.path.endsWith('/trash/restore')
-      && request.options.body === '{"sessionIds":["trash-a"]}')
-    && !elementText(tree).includes('Trash Alpha')
-    && recycleSidebarRefreshes === 3,
-  'ordinary restore returns the exact chat to the archive and refreshes archive consumers');
-
-  collectElements(tree).find(el => el.props?.role === 'tab' && elementText(el) === t('tab.archived'))?.props.onClick();
-  tree = harness.render(recycleProps);
-  assert(!collectElements(tree).some(el => el.props?.className === 'dac-toast'), 'tab change immediately clears restore success');
-  collectElements(tree).find(el => el.props?.role === 'tab' && elementText(el) === t('tab.trash'))?.props.onClick();
-  tree = harness.render(recycleProps);
-  assert(!collectElements(tree).some(el => el.props?.className === 'dac-toast'), 'returning to Recycle Bin does not resurrect stale success');
-
-  elements = collectElements(tree);
-  const currentHead = elements.find((element) => element.props?.className === 'dac-intro-row');
-  const emptyRequestsBeforeConfirm = requests.filter((request) => request.path.endsWith('/trash/empty')).length;
-  collectElements(currentHead).find((element) => element.type === 'button' && elementText(element) === '清空回收站')?.props.onClick();
-  tree = harness.render(recycleProps);
-  let purgeDialog = findComponentElement(tree, 'ConfirmDialog');
-  assert(purgeDialog?.props.title === '清空回收站？'
-    && purgeDialog?.props.body.includes('个工作区') && purgeDialog.props.body.includes('保护快照') && purgeDialog.props.body.includes('无法撤销'),
-  'Empty Recycle Bin confirmation names every workspace chat and protection snapshot');
-  assert(requests.filter((request) => request.path.endsWith('/trash/empty')).length === emptyRequestsBeforeConfirm,
-    'direct Empty button opens confirmation without deleting');
-  purgeDialog?.props.onCancel();
-  assert(!findComponentElement(harness.render(recycleProps), 'ConfirmDialog')
-    && requests.filter((request) => request.path.endsWith('/trash/empty')).length === emptyRequestsBeforeConfirm,
-  'canceling direct Empty confirmation leaves all recycled chats untouched');
-  collectElements(currentHead).find((element) => element.type === 'button' && elementText(element) === '清空回收站')?.props.onClick();
-  purgeDialog = findComponentElement(harness.render(recycleProps), 'ConfirmDialog');
-  await purgeDialog?.props.onConfirm();
-  assert(requests.some((request) => request.path.endsWith('/trash/empty')
-      && request.options.body === '{"targets":[{"sessionId":"trash-empty","state":"trashed","trashedAt":"2026-08-24T04:05:06.000Z","snapshotId":"snapshot-empty","bytes":256}]}')
-    && recycleSidebarRefreshes === 4
-    && !elementText(harness.render(recycleProps)).includes('Trash Empty'),
-  'confirmed Empty Recycle Bin sends the captured record incarnation and refreshes the sidebar');
 
   harness.unmount();
   globalThis.fetch = savedFetch;
@@ -4226,140 +3594,10 @@ console.log('\n[11f] client half — recycle navigation and management');
 }
 
 console.log('\n[11f1] client half — large Empty Recycle Bin scopes are bounded without retrying uncertain writes');
-{
-  const savedFetch = globalThis.fetch;
-  const targets = Array.from({ length: 2001 }, (_, index) => ({
-    sessionId: `empty-${index}`, state: 'trashed', trashedAt: `2026-08-24T00:00:${String(index % 60).padStart(2, '0')}.000Z`,
-    snapshotId: `snapshot-${index}`, bytes: index,
-  }));
 
-  for (const mode of ['success', 'known-later-failure', 'first-response-lost']) {
-    const batches = [];
-    globalThis.fetch = async (_url, options = {}) => {
-      const body = JSON.parse(options.body);
-      assert(Array.isArray(body.targets), 'Empty requests always carry a bounded explicit target scope');
-      batches.push(body.targets);
-      if (mode === 'first-response-lost') throw new Error('response lost after commit');
-      if (mode === 'known-later-failure' && batches.length === 2) {
-        return { ok: false, status: 409, json: async () => ({ purged: [], failed: body.targets.map((target) => ({ id: target.sessionId, reason: 'retention-candidate-stale' })) }) };
-      }
-      return { ok: true, status: 200, json: async () => ({ purged: body.targets.map((target) => target.sessionId), failed: [] }) };
-    };
-
-    const result = await clientExports.__test.emptyTrash(targets);
-    if (mode === 'first-response-lost') {
-      assert(batches.length === 1 && batches[0].length === 2000, 'an uncertain first Empty batch stops without retry or scope expansion');
-      assert(result.purged.length === 0 && result.failed.length === 0 && result.uncertain.length === 2001, 'response loss never invents purge success');
-    } else {
-      assert(batches.length === 2 && batches[0].length === 2000 && batches[1].length === 1, `Empty uses bounded batches (${mode})`);
-      assert(result.purged.length === 2000 + Number(mode === 'success'), `Empty retains prior confirmed successes (${mode})`);
-      assert(result.failed.length === Number(mode === 'known-later-failure') && result.uncertain.length === 0, `Empty preserves known failures (${mode})`);
-    }
-  }
-  globalThis.fetch = savedFetch;
-}
 
 console.log('\n[11f2] client half — global recycle restore and About');
-{
-  const savedHooks = { ...moduleTable.react };
-  const savedFetch = globalThis.fetch;
-  const t = clientCtx.locale.bind('settings.archived-chats');
-  const requests = [];
-  let rows = [
-    { sessionId: 'restore-a', title: 'A', state: 'trashed', workspace: { id: 'a', title: 'Workspace A' } },
-    { sessionId: 'restore-b', title: 'B', state: 'degraded', workspace: { id: 'b', title: 'Workspace B' } },
-    { sessionId: 'deleting-c', title: 'C', state: 'purge-pending', workspace: { id: 'b', title: 'Workspace B' } },
-  ];
-  const about = { name: 'dsh-archived-chats', version: '1.3.3', author: 'Ultronen', license: 'MIT',
-    links: { home: 'https://github.com/Ultronen/dsh-archived-chats', feedback: 'https://github.com/Ultronen/dsh-archived-chats/issues/new',
-      guideZh: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/docs/USER_GUIDE.zh-CN.md',
-      guideEn: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/docs/USER_GUIDE.md',
-      changelog: 'https://github.com/Ultronen/dsh-archived-chats/releases', marketplace: 'https://awesome-dsh-plugin.com/p/Ultronen/dsh-archived-chats/' },
-    update: { status: 'unchecked', latestVersion: null, checkedAt: null } };
-  let finishRestore;
-  let checkFails = false;
-  globalThis.fetch = async (url, options = {}) => {
-    const path = String(url); requests.push({ path, options });
-    let payload = {};
-    if (path.endsWith('/state')) payload = { sessions: [], metadataStatus: 'ready', trashStatus: 'ready' };
-    if (path.endsWith('/trash')) payload = { sessions: rows, trashStatus: 'ready' };
-    if (path.endsWith('/about')) payload = about;
-    if (path.endsWith('/about/check-updates')) payload = { ...about, update: { status: checkFails ? 'unavailable' : 'available', latestVersion: '1.4.0', checkedAt: '2026-09-21T00:00:00.000Z' } };
-    if (path.endsWith('/trash/restore')) {
-      await new Promise(resolve => { finishRestore = resolve; });
-      rows = rows.filter(row => row.sessionId !== 'restore-a');
-      payload = { restored: ['restore-a'], failed: [{ id: 'restore-b', reason: 'snapshot-invalid' }], warnings: [] };
-    }
-    return { ok: true, status: 200, json: async () => payload };
-  };
-  const harness = createHookHarness(clientCalls.slotRegister[0].component);
-  const render = () => harness.render({ t, refreshSidebar: () => {} });
-  render(); harness.flushEffects();
-  await new Promise(resolve => setTimeout(resolve, 0));
-  let tree = render();
-  assert(elementText(tree).includes('未归档') && !elementText(tree).includes('批量归档'), 'archive toolbar integrates bulk archive into the Unarchived view');
-  assert(elementText(tree).includes('v1.3.3'), 'title row displays the loaded backend version');
-  const updateLink = collectElements(tree).find(el => el.type === 'button' && elementText(el) === '查看更新');
-  assert(updateLink !== undefined, 'new-version header opens update details without installing');
-  await updateLink?.props.onClick({ currentTarget: null });
-  assert(findComponentElement(render(), 'UpdateDialog') !== undefined, 'update details are available from the header');
-  findComponentElement(render(), 'UpdateDialog')?.props.onClose();
-  assert(collectElements(tree).some(el => el.props?.className === 'dac-update-dot'), 'confirmed backend update appears on the actual About tab');
-  const automaticChecks = requests.filter(request => request.path.endsWith('/about/check-updates') && request.options.body === '{"force":false}');
-  assert(automaticChecks.length === 1 && automaticChecks[0].options.body === '{"force":false}', 'opening archive performs one cache-aware metadata check');
-  collectElements(tree).find(el => el.props?.role === 'tab' && elementText(el) === '关于')?.props.onClick();
-  tree = render();
-  const aboutPanel = findComponentElement(tree, 'AboutPanel');
-  assert(collectElements(tree).some(el => el.props?.className === 'dac-update-dot'), 'visiting About does not falsely mark an available update as installed');
-  assert(aboutPanel !== undefined && elementText(tree).includes('Ultronen') && elementText(tree).includes('MIT'), 'About shows package identity and license');
-  if (aboutPanel) {
-    assert(!collectElements(aboutPanel).some(el => /^h[12]$/.test(el.type)), 'About does not repeat the plugin title already shown in the page heading');
-    assert(elementText(aboutPanel).includes('会话备份') && !elementText(aboutPanel).includes('回收站恢复'), 'About opens directly with the agreed plugin description');
-    const en = clientCalls.localeRegister[0].dicts.en;
-    const englishPanel = aboutPanel.type({ ...aboutPanel.props, t: key => en[key] ?? key });
-    assert(!collectElements(englishPanel).some(el => /^h[12]$/.test(el.type)) && elementText(englishPanel).includes('conversation backups'), 'English About also starts with an introduction without a repeated title');
-  }
-  assert(elementText(aboutPanel).includes('当前版本 · v1.3.3'), 'About labels the loaded local version separately from the latest registry version');
-  assert(elementText(tree).includes('重启') && elementText(tree).includes('不会自动'), 'About states restart boundaries and no automatic install/restart');
-  for (const label of ['项目主页', '使用指南', '更新日志', '问题反馈', '插件市场']) {
-    const link = collectElements(tree).find(el => el.type === 'a' && elementText(el).includes(label));
-    assert(link?.props.href.startsWith('https://') && link.props.rel?.includes('noopener'), `About ${label} uses a safe direct link`);
-  }
-  checkFails = true;
-  await collectElements(tree).find(el => el.type === 'button' && elementText(el) === '检查更新')?.props.onClick();
-  tree = render();
-  assert(elementText(tree).includes('检查更新失败') && !elementText(tree).includes('已是最新版本'), 'offline update checks never report latest');
-  assert(!collectElements(tree).some(el => el.props?.className === 'dac-update-dot'), 'failed update checks do not retain a confirmed-update badge');
-  assert(elementText(tree).includes('当前版本 · v1.3.3') && elementText(tree).includes('Ultronen'), 'failed remote checks retain the running local version and identity');
-  assert(requests.some(request => request.path.endsWith('/about/check-updates') && request.options.body === '{"force":true}'), 'manual update check explicitly bypasses the long cache');
-  collectElements(tree).find(el => el.props?.role === 'tab' && elementText(el) === '回收站')?.props.onClick();
-  render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
-  tree = render();
-  const head = collectElements(tree).find(el => el.props?.className === 'dac-intro-row');
-  const restoreAll = collectElements(head).find(el => el.type === 'button' && elementText(el) === '全部恢复');
-  assert(restoreAll !== undefined, 'Recycle Bin header has a global Restore all');
-  restoreAll?.props.onClick();
-  let confirm = findComponentElement(render(), 'ConfirmDialog');
-  assert(confirm?.props.body.includes('2 个工作区') && confirm.props.body.includes('2 个可恢复聊天')
-    && confirm.props.body.includes('1 个') && confirm.props.body.includes('跳过') && confirm.props.body.includes('已归档'),
-  'global restore confirms all workspaces, eligible count, skipped deletions, and archive destination');
-  assert(!requests.some(request => request.path.endsWith('/trash/restore')), 'global restore is confirmation-first');
-  confirm?.props.onCancel();
-  restoreAll?.props.onClick(); confirm = findComponentElement(render(), 'ConfirmDialog');
-  const first = confirm?.props.onConfirm();
-  const second = confirm?.props.onConfirm();
-  assert(requests.filter(request => request.path.endsWith('/trash/restore')).length === 1, 'repeated confirm cannot submit global restoration twice');
-  finishRestore?.(); await Promise.all([first, second]);
-  tree = render();
-  const sent = requests.find(request => request.path.endsWith('/trash/restore'));
-  assert(sent?.options.body === '{"sessionIds":["restore-a","restore-b"]}', 'global restore never submits pending-deletion IDs');
-  assert(elementText(tree).includes('1 个聊天恢复到已归档') && elementText(tree).includes('1 个未恢复'), 'partial restore reports actual successes and failures together');
-  assert(elementText(tree).includes('B') && elementText(tree).includes('C'), 'failed and pending recycle records remain visible');
-  collectElements(tree).find(el => el.type === 'button' && elementText(el) === '查看已归档')?.props.onClick();
-  assert(collectElements(render()).some(el => el.props?.role === 'tab' && el.props['aria-selected'] === true && elementText(el) === '已归档'), 'restore result offers navigation to Archived');
-  assert(!requests.some(request => /\/unarchive|\/install|\/restart/.test(request.path)), 'restore and update discovery do not unarchive, install, or restart');
-  harness.unmount(); globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
-}
+
 
 console.log('\n[updates] recurring checks and reviewed installation');
 {
@@ -4388,12 +3626,13 @@ console.log('\n[updates] recurring checks and reviewed installation');
     update: { status: 'available', latestVersion: '1.4.0', checkedAt: '2026-10-22T00:00:00Z' },
     installation: { environment: 'desktop', profile: 'desktop', source: 'registry', canInstall: true, command: null, packageSpec: 'dsh-archived-chats@1.4.0' }, install: { status: 'idle' } };
   globalThis.fetch = async (url, options = {}) => {
-    const path = String(url); requests.push({ path, options });
+    const path = String(url);
+    requests.push({ path, options });
     if (path.endsWith('/about/install-update')) {
       await new Promise(resolve => { complete = resolve; });
       return { ok: true, json: async () => ({ ...info, install: { status: 'restart-required', version: '1.4.0' } }) };
     }
-    return { ok: true, json: async () => path.includes('/about') ? info : { sessions: [], trashStatus: 'ready', metadataStatus: 'ready' } };
+    return { ok: true, json: async () => path.includes('/about') ? info : { sessions: [], deletionStatus: 'ready', metadataStatus: 'ready' } };
   };
   const harness = createHookHarness(clientCalls.slotRegister[0].component);
   const render = () => harness.render({ t, refreshSidebar: () => {} });
@@ -4431,94 +3670,24 @@ console.log('\n[updates] recurring checks and reviewed installation');
   if (savedNavigator) Object.defineProperty(globalThis, 'navigator', savedNavigator); else delete globalThis.navigator;
 }
 
-console.log('\n[maintenance] About opens a manual, review-first residual check');
+console.log('\n[about] retired maintenance is absent');
 {
   const savedHooks = { ...moduleTable.react }, savedFetch = globalThis.fetch;
   const t = clientCtx.locale.bind('settings.archived-chats');
   const requests = [];
-  let finishScan, failScan = false, rows = [{ id: 'residual-review', title: 'Old agent result', parentSession: 'missing-parent', cwd: '/synthetic', createdAt: 42, sizeBytes: 64 }];
-  globalThis.fetch = async (url, options = {}) => {
-    const path = String(url); requests.push({ path, options });
-    let payload = {};
-    if (path.endsWith('/state')) payload = { sessions: [], trashStatus: 'ready', metadataStatus: 'ready' };
-    if (path.endsWith('/trash')) payload = { sessions: [], trashStatus: 'ready' };
-    if (path.includes('/orphans?')) {
-      await new Promise(resolve => { finishScan = resolve; });
-      if (failScan) throw new Error('scan unavailable');
-      payload = { sessions: rows, trashStatus: 'ready', summary: { total: rows.length, bytes: 64 } };
-    }
-    if (path.includes('/orphans/delete')) {
-      const ids = JSON.parse(options.body).sessionIds;
-      rows = rows.filter(row => !ids.includes(row.id));
-      payload = { deleted: ids, pending: [], failed: [] };
-    }
-    if (path.endsWith('/preview')) payload = { session: rows[0], messages: [], nextOffset: null };
-    return { ok: true, status: 200, json: async () => payload };
+  globalThis.fetch = async url => {
+    requests.push(String(url));
+    return { ok: true, status: 200, json: async () => ({ sessions: [], deletionStatus: 'ready', metadataStatus: 'ready' }) };
   };
   const harness = createHookHarness(clientCalls.slotRegister[0].component);
   const render = () => harness.render({ t });
-  const settle = async () => { render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0)); return render(); };
-  const button = label => collectElements(render()).find(el => el.type === 'button' && elementText(el) === label);
-  await settle(); await settle();
+  render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
   collectElements(render()).find(el => el.props?.id === 'dac-tab-about')?.props.onClick();
-  await settle();
-  assert(!requests.some(request => request.path.includes('/orphans')), 'opening About never scans or mutates conversations automatically');
-  const start = button('检查残留会话');
-  assert(start !== undefined && elementText(render()).includes('维护工具'), 'About exposes a manual residual maintenance entry even when version metadata is unavailable');
-  if (start) {
-    start.props.onClick({ currentTarget: { focus() {} } });
-    await settle();
-    assert(requests.filter(request => request.path.includes('/orphans?')).length === 1 && requests.at(-1).path.includes('kind=subagent'), 'manual check requests only the missing-parent subagent scope');
-    let dialog = findComponentElement(render(), 'ResidualSessionsDialog');
-    assert(elementText(dialog).includes('正在检查') && !elementText(dialog).includes('未发现残留会话'), 'pending check cannot report a clean result');
-    assert(collectElements(dialog).filter(el => el.type === 'button' && [t('residual.backup'),t('orphans.delete')].includes(elementText(el))).every(el=>el.props.disabled), 'loading results cannot be exported or deleted');
-    finishScan(); await settle();
-    dialog = findComponentElement(render(), 'ResidualSessionsDialog');
-    assert(elementText(dialog).includes('Old agent result'), 'completed manual check displays reviewable candidates');
-    const preview = collectElements(dialog).find(el => el.type === 'button' && el.props['aria-label']?.includes('Old agent result'));
-    await preview?.props.onClick();
-    assert(requests.some(request => request.path.endsWith('/preview') && JSON.parse(request.options.body).scope === 'orphan-subagent'), 'maintenance preview retains the strict residual scope');
-    findComponentElement(render(), 'PreviewDialog')?.props.onCancel();
-    dialog = findComponentElement(render(), 'ResidualSessionsDialog');
-    dialog.props.onToggle('residual-review');
-    dialog = findComponentElement(render(), 'ResidualSessionsDialog');
-    assert(collectElements(dialog).find(el => el.type === 'button' && elementText(el) === t('residual.backup'))?.props.disabled === false, 'reviewed residual selection can be backed up');
-    dialog.props.onDelete({ currentTarget: null });
-    let confirm = findComponentElement(render(), 'ConfirmDialog');
-    assert(confirm && !requests.some(request => request.path.includes('/orphans/delete')), 'selected cleanup waits for irreversible-delete confirmation');
-    confirm?.props.onCancel();
-    assert(!requests.some(request => request.path.includes('/orphans/delete')), 'canceling cleanup does not delete any conversation');
-    dialog.props.onDelete({ currentTarget: null });
-    confirm = findComponentElement(render(), 'ConfirmDialog');
-    const applying = confirm.props.onConfirm(), duplicate = confirm.props.onConfirm();
-    await settle(); finishScan(); await Promise.all([applying, duplicate]); await settle();
-    const deletions = requests.filter(request => request.path.includes('/orphans/delete'));
-    assert(deletions.length === 1 && deletions[0].path.includes('kind=subagent') && JSON.parse(deletions[0].options.body).sessionIds.join(',') === 'residual-review', 'confirmed maintenance deletes exactly the selected residual once');
-    dialog = findComponentElement(render(), 'ResidualSessionsDialog');
-    assert(elementText(dialog).includes('未发现残留会话') && dialog.props.selected.size === 0, 'completed cleanup refreshes candidates and clears deleted selections');
-
-    dialog.props.onCheck(); await settle();
-    failScan = true; finishScan(); await settle();
-    dialog = findComponentElement(render(), 'ResidualSessionsDialog');
-    assert(elementText(dialog).includes('检查失败') && !elementText(dialog).includes('未发现残留会话'), 'failed scan stays visibly failed and never reports no residuals');
-    assert(collectElements(dialog).some(el => el.type === 'button' && elementText(el) === t('state.retry')), 'failed manual scan offers retry');
-    failScan = false; rows = [];
-    dialog.props.onCheck(); await settle(); finishScan(); await settle();
-    dialog = findComponentElement(render(), 'ResidualSessionsDialog');
-    assert(elementText(dialog).includes('未发现残留会话'), 'only a successful empty scan reports a clean result');
-    dialog.props.onCheck(); await settle();
-    const pending = requests.filter(request => request.path.includes('/orphans?')).at(-1);
-    findComponentElement(render(), 'ResidualSessionsDialog')?.props.onClose();
-    assert(pending.options.signal.aborted, 'closing maintenance aborts its in-flight scan');
-    finishScan(); await settle();
-    assert(findComponentElement(render(), 'ResidualSessionsDialog') === undefined, 'late scan results cannot reopen a closed maintenance dialog');
-    button('检查残留会话').props.onClick({ currentTarget: null }); await settle();
-    collectElements(render()).find(el => el.props?.id === 'dac-tab-archived').props.onClick(); await settle();
-    collectElements(render()).find(el => el.props?.id === 'dac-tab-about').props.onClick(); await settle();
-    assert(button('检查残留会话')?.props.disabled !== true, 'leaving during a scan cannot leave maintenance permanently disabled');
-    finishScan(); await settle();
-
-  }
+  render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
+  const aboutText = elementText(render());
+  assert(!aboutText.includes('维护工具') && !aboutText.includes('检查残留会话'), 'About omits retired maintenance controls');
+  assert(aboutText.includes('版本与更新'), 'About retains version and update controls');
+  assert(!requests.some(path => path.includes('/orphans')), 'About never requests retired maintenance endpoints');
   harness.unmount(); globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
 }
 
@@ -4543,7 +3712,7 @@ console.log('\n[11f2b] client half — local About failures are distinct and ret
           json: async () => unavailable ? {} : localInfo };
       }
       if (path.endsWith('/about/check-updates')) { updateChecks += 1; return { ok: true, json: async () => localInfo }; }
-      return { ok: true, json: async () => ({ sessions: [], metadataStatus: 'ready', trashStatus: 'ready' }) };
+      return { ok: true, json: async () => ({ sessions: [], metadataStatus: 'ready', deletionStatus: 'ready' }) };
     };
     const harness = createHookHarness(clientCalls.slotRegister[0].component);
     const render = () => harness.render({ t });
@@ -4556,7 +3725,7 @@ console.log('\n[11f2b] client half — local About failures are distinct and ret
     const retry = collectElements(tree).find(el => el.type === 'button' && elementText(el) === '重新读取');
     assert(retry !== undefined && retry.props.disabled !== true, `${failure}: local metadata failure has its own retry action`);
     unavailable = false;
-    await retry?.props.onClick();
+    retry?.props.onClick();
     await new Promise(resolve => setTimeout(resolve, 0));
     tree = render();
     assert(localReads === 2 && elementText(tree).includes('当前版本 · v2.7.4') && !elementText(tree).includes('v1.3.3'), `${failure}: retry reads and displays the real backend version dynamically`);
@@ -4567,58 +3736,7 @@ console.log('\n[11f2b] client half — local About failures are distinct and ret
 }
 
 console.log('\n[11f3] client half — large recycle restore batches preserve partial results');
-{
-  const savedHooks = { ...moduleTable.react };
-  const savedFetch = globalThis.fetch;
-  const t = clientCtx.locale.bind('settings.archived-chats');
-  for (const laterFailure of [false, true, 'network', 'first-network']) {
-    let rows = Array.from({ length: 2001 }, (_, index) => ({ sessionId: `large-${index}`, title: `Chat ${index}`, state: 'trashed', workspace: { id: 'large', title: 'Large workspace' } }));
-    const batches = [];
-    let stateReads = 0;
-    globalThis.fetch = async (url, options = {}) => {
-      const path = String(url);
-      let status = 200;
-      let payload = {};
-      if (path.endsWith('/state')) { stateReads += 1; payload = { sessions: [], metadataStatus: 'ready', trashStatus: 'ready' }; }
-      if (path.endsWith('/trash')) payload = { sessions: rows, trashStatus: 'ready' };
-      if (path.endsWith('/trash/restore')) {
-        const ids = JSON.parse(options.body).sessionIds;
-        batches.push(ids);
-        if (laterFailure === 'first-network') { rows = rows.filter(row => !ids.includes(row.sessionId)); throw new Error('response lost after commit'); }
-        if (ids.length > 2000) { status = 400; payload = { error: 'sessionIds-too-many' }; }
-        else if (batches.length > 1 && laterFailure) {
-          if (laterFailure === 'network') throw new Error('connection lost');
-          status = 409; payload = { restored: [], failed: ids.map(id => ({ id, reason: 'snapshot-invalid' })) };
-        } else {
-          rows = rows.filter(row => !ids.includes(row.sessionId));
-          payload = { restored: ids, failed: [] };
-        }
-      }
-      return { ok: status === 200, status, json: async () => payload };
-    };
-    const harness = createHookHarness(clientCalls.slotRegister[0].component);
-    const render = () => harness.render({ t, refreshSidebar: () => {} });
-    render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
-    collectElements(render()).find(el => el.props?.role === 'tab' && elementText(el) === '回收站')?.props.onClick();
-    render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
-    collectElements(render()).find(el => el.type === 'button' && elementText(el) === '全部恢复')?.props.onClick();
-    const dialog = render().props.children.find(el => el?.type?.name === 'ConfirmDialog');
-    await dialog?.props.onConfirm();
-    const tree = render();
-    if (laterFailure === 'first-network') {
-      assert(batches.length === 1 && batches[0].length === 2000, 'unknown first-batch result stops further writes without retrying');
-      assert(elementText(tree).includes('2001 个未确认恢复') && stateReads === 2, 'unknown first-batch result refreshes Archived as well as trash without inventing successes');
-      harness.unmount();
-      continue;
-    }
-    assert(batches.length === 2 && batches[0].length === 2000 && batches[1].length === 1, `global restore obeys the host per-request limit (${laterFailure})`);
-    assert(elementText(tree).includes(`${laterFailure ? 2000 : 2001} 个聊天恢复到已归档`), `restore summary retains prior batch successes (${laterFailure})`);
-    if (laterFailure) assert(elementText(tree).includes(laterFailure === 'network' ? '1 个未确认恢复' : '1 个未恢复'), 'later batch failure keeps the actual failure or uncertainty count');
-    assert(collectElements(tree).some(el => el.type === 'button' && elementText(el) === '查看已归档'), 'large restore retains View Archived after success or partial failure');
-    harness.unmount();
-  }
-  globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
-}
+
 
 console.log('\n[archive-delete-tooltip] pointer and keyboard feedback');
 {
@@ -4693,27 +3811,75 @@ console.log('\n[preview-title-tooltip] immediate hints and preview activation');
   harness.unmount(); Object.assign(moduleTable.react, savedHooks);
 }
 
+console.log('\n[deletion-preview] scope loading, cancellation and a confirmed cascade');
+{
+  const savedHooks = { ...moduleTable.react }, savedFetch = globalThis.fetch;
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  const rows = [{ id: 'preview-parent', title: 'Scope preview', createdAt: 10 }];
+  let finishPreview, failPreview = false;
+  const writes = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const path = String(url);
+    if (path.endsWith('/deletion/preview')) return new Promise(resolve => {
+      finishPreview = () => resolve(new Response(JSON.stringify(failPreview ? { error: 'session-delete-running' } : { plan: {
+        fingerprint: 'confirmed-three', selectedCount: 1, subagentCount: 2, total: 3,
+        targets: [{ sessionId: 'preview-parent', createdAt: 10 }, { sessionId: 'child', createdAt: 20 }, { sessionId: 'grandchild', createdAt: 30 }],
+      } }), { status: failPreview ? 409 : 200 }));
+    });
+    if (path.endsWith('/deletion/execute')) {
+      writes.push(JSON.parse(options.body));
+      return new Response(JSON.stringify({ deleted: ['preview-parent', 'child', 'grandchild'], pending: [], failed: [] }));
+    }
+    return new Response(JSON.stringify(path.endsWith('/state') ? { sessions: rows, metadataStatus: 'ready', deletionStatus: 'ready' } : { sessions: [] }));
+  };
+  const harness = createHookHarness(clientCalls.slotRegister[0].component);
+  const render = () => harness.render({ t });
+  const deleteButton = () => archiveRowDelete(render(), 'Scope preview');
+  render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
+  const cancelled = deleteButton().props.onClick();
+  let dialog = findComponentElement(render(), 'ConfirmDialog');
+  assert(dialog.props.confirmDisabled === true, 'deletion stays disabled while its exact scope is loading');
+  await dialog.props.onConfirm();
+  assert(writes.length === 0, 'loading confirmation cannot execute deletion');
+  dialog.props.onCancel(); finishPreview(); await cancelled;
+  assert(!findComponentElement(render(), 'ConfirmDialog'), 'late preview response never reopens a cancelled dialog');
+  failPreview = true;
+  const refused = deleteButton().props.onClick(); finishPreview(); await refused;
+  assert(!findComponentElement(render(), 'ConfirmDialog') && writes.length === 0 && elementText(render()).includes('子智能体'),
+    'a running descendant explains the refusal without exposing an actionable confirmation');
+  failPreview = false;
+  const ready = deleteButton().props.onClick(); finishPreview(); await ready;
+  dialog = findComponentElement(render(), 'ConfirmDialog');
+  assert(!dialog.props.confirmDisabled && dialog.props.body.includes('2 个子智能体') && dialog.props.body.includes('共 3 个'),
+    'confirmation discloses the actual descendant count and total');
+  await dialog.props.onConfirm();
+  assert(writes.length === 1 && writes[0].fingerprint === 'confirmed-three' && writes[0].source === 'archive'
+    && writes[0].sessions[0].sessionId === 'preview-parent', 'execution carries the confirmed scope fingerprint through the unified endpoint');
+  harness.unmount(); globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
+}
+
 console.log('\n[archive-delete-icon] direct deletion requires confirmation and skips recycling');
 {
   const savedHooks = { ...moduleTable.react };
   const savedFetch = globalThis.fetch;
   const t = clientCtx.locale.bind('settings.archived-chats');
-  const rows = [{ id: 'direct-delete', title: 'Direct deletion fixture', workspaceId: 'delete-ws', workspaceTitle: 'Delete workspace' }];
+  const rows = [{ id: 'direct-delete', createdAt: 10, title: 'Direct deletion fixture', workspaceId: 'delete-ws', workspaceTitle: 'Delete workspace' }];
   const writes = [];
   globalThis.fetch = async (url, options = {}) => {
     const path = String(url);
-    if (path.endsWith('/delete-all')) {
+    if (path.endsWith('/deletion/preview')) return deletionPreviewFixture(options);
+    if (path.endsWith('/deletion/execute')) {
       writes.push({ body: JSON.parse(options.body), guard: options.headers['x-dsh-archived-chats'] });
       return new Response(JSON.stringify({ deleted: ['direct-delete'], failed: [] }));
     }
-    return new Response(JSON.stringify(path.endsWith('/state') ? { sessions: rows, metadataStatus: 'ready', trashStatus: 'ready' } : {}));
+    return new Response(JSON.stringify(path.endsWith('/state') ? { sessions: rows, metadataStatus: 'ready', deletionStatus: 'ready' } : {}));
   };
   const harness = createHookHarness(clientCalls.slotRegister[0].component);
   const render = () => harness.render({ t });
   const icon = () => collectElements(collectElements(render()).find(el => el.props?.className === 'dac-row-actions')).find(el => el.type === 'button');
   render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
   assert(icon()?.props['aria-label'] === '删除已归档的聊天', 'delete icon announces permanent archived-chat deletion instead of recycling');
-  icon()?.props.onClick();
+  await icon()?.props.onClick();
   let dialog = findComponentElement(render(), 'ConfirmDialog');
   assert(dialog?.props.title === '删除已归档的聊天？' && dialog.props.body.includes('永久删除')
     && dialog.props.body.includes('Direct deletion fixture') && dialog.props.confirmLabel === '删除',
@@ -4721,68 +3887,17 @@ console.log('\n[archive-delete-icon] direct deletion requires confirmation and s
   assert(writes.length === 0, 'clicking the trash icon never deletes before confirmation');
   dialog?.props.onCancel();
   assert(writes.length === 0, 'canceling direct deletion sends no mutation');
-  icon()?.props.onClick();
+  await icon()?.props.onClick();
   await findComponentElement(render(), 'ConfirmDialog')?.props.onConfirm();
   assert(writes.length === 1 && writes[0].body.permanent === true
-    && writes[0].body.sessionIds.join(',') === 'direct-delete' && writes[0].guard === '1',
+    && writes[0].body.sessions.map(row => row.sessionId).join(',') === 'direct-delete' && writes[0].guard === '1',
     'confirmed row deletion sends exactly one guarded permanent delete request');
   assert(!collectElements(render()).some(el => el.props?.className === 'dac-row'), 'confirmed direct deletion removes the archived row');
   harness.unmount(); globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
 }
 
 console.log('\n[recycle-actions] explicit selected cleanup preserves recovery and scope');
-{
-  const savedHooks = { ...moduleTable.react };
-  const savedFetch = globalThis.fetch;
-  for (const english of [false, true]) {
-    const labels = english ? { recycle: 'Move to Recycle Bin', permanent: 'Delete', question: 'Move selected chats to the Recycle Bin?', archived: 'Archived', select: 'Select' }
-      : { recycle: '移入回收站', permanent: '删除', question: '将选中的聊天移入回收站？', archived: '已归档', select: '选择' };
-    const baseT = clientCtx.locale.bind('settings.archived-chats');
-    const t = english ? key => clientCalls.localeRegister[0].dicts.en[key] ?? baseT(key) : baseT;
-    const rows = [
-      { id: 'row-cleanup-a', title: 'Recovery Alpha', workspaceId: 'cleanup-ws', workspaceTitle: 'Cleanup workspace' },
-      { id: 'row-cleanup-b', title: 'Recovery Beta', workspaceId: 'cleanup-ws', workspaceTitle: 'Cleanup workspace' },
-    ];
-    const requests = [];
-    let finishMove;
-    globalThis.fetch = async (url, options = {}) => {
-      const path = String(url);
-      if (path.endsWith('/delete-all')) {
-        const body = JSON.parse(options.body); requests.push(body);
-        await new Promise(resolve => { finishMove = resolve; });
-        // A protection-snapshot failure must leave the archive row available.
-        return new Response(JSON.stringify({ trashed: [], failed: [{ id: 'row-cleanup-a', reason: 'snapshot-failed', message: english ? 'Protection snapshot failed' : '保护快照失败' }] }));
-      }
-      return new Response(JSON.stringify(path.endsWith('/state') ? { sessions: rows, metadataStatus: 'ready', trashStatus: 'ready' } : {}));
-    };
-    const harness = createHookHarness(clientCalls.slotRegister[0].component);
-    const render = () => harness.render({ t });
-    const selectedRecycle = () => collectElements(render()).find(el => el.type === 'button' && elementText(el) === labels.recycle);
-    render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
-    const header = await openArchivePreviewHeader(render, 'Recovery Alpha');
-    const headerButtons = collectElements(header).filter(el => el.type === 'button');
-    assert(headerButtons.length === 2 && !findComponentElement(header, 'ChatActionMenu'),
-      'preview header contains only direct editing and close controls');
-    assert(headerButtons.every(el => collectElements(el).some(child => child.type === 'svg')),
-      'preview editing and close controls display icons');
-    assert(!headerButtons.some(el => elementText(el) === labels.permanent), 'preview has no delete action');
-    findComponentElement(render(), 'PreviewDialog')?.props.onCancel();
-    const permanent = archiveRowDelete(render(), 'Recovery Alpha');
-    assert(permanent !== undefined, 'outer archived row retains permanent deletion');
-    permanent?.props.onClick();
-    let dialog = findComponentElement(render(), 'ConfirmDialog');
-    assert(dialog?.props.body.includes('Recovery Alpha') && !dialog.props.body.includes('Recovery Beta') && dialog.props.confirmClassName === 'dac-btn-danger',
-      'secondary permanent confirmation names only the chosen row and remains irreversible');
-    dialog?.props.onCancel();
-    collectElements(render()).find(el => el.type === 'button' && elementText(el) === labels.select)?.props.onClick();
-    collectElements(render()).find(el => el.type === 'input' && el.props?.type === 'checkbox'
-      && String(el.props['aria-label']).includes('Recovery Alpha'))?.props.onChange({ target: { checked: true } });
-    assert(selectedRecycle() === undefined, 'selection offers no new recycle action in either locale');
-    assert(requests.length === 0, 'retired selection actions do not send mutations');
-    harness.unmount();
-  }
-  globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
-}
+
 
 console.log('\n[11g] client half — permanent deletion and recoverable project move');
 {
@@ -4795,6 +3910,7 @@ console.log('\n[11g] client half — permanent deletion and recoverable project 
   const responseFor = (payload) => ({ ok: true, status: 200, json: async () => payload });
   globalThis.fetch = async (url, options = {}) => {
     const path = String(url);
+    if (path.endsWith('/deletion/preview')) return deletionPreviewFixture(options);
     requests.push({ path, options });
     if (path.endsWith('/state')) return responseFor({ metadataStatus: 'ready', sessions: archived });
     if (path.endsWith('/stats')) return responseFor({ summary: { sessionCount: 1, totalBytes: 0, unavailableCount: 0 }, sessions: {} });
@@ -4802,7 +3918,7 @@ console.log('\n[11g] client half — permanent deletion and recoverable project 
       'content-type': 'application/zip',
       'content-disposition': 'attachment; filename="project.zip"',
     } });
-    if (path.endsWith('/delete-all')) return responseFor(JSON.parse(options.body).permanent ? { deleted: ['undo-a'], failed: [] } : { trashed: ['undo-a'], failed: [] });
+    if (path.endsWith('/deletion/execute')) return responseFor(JSON.parse(options.body).permanent ? { deleted: ['undo-a'], failed: [] } : { trashed: ['undo-a'], failed: [] });
     if (path.endsWith('/trash/restore')) return responseFor({ restored: ['undo-a'], failed: [], warnings: [] });
     return responseFor({});
   };
@@ -4815,21 +3931,21 @@ console.log('\n[11g] client half — permanent deletion and recoverable project 
   let elements = collectElements(tree);
   const renderArchive = () => harness.render({ t, refreshSidebar: () => {} });
   const rowDelete = archiveRowDelete(renderArchive(), 'Undo Alpha');
-  rowDelete?.props.onClick();
+  await rowDelete?.props.onClick();
   tree = harness.render({ t, refreshSidebar: () => {} });
   const deleteDialog = findComponentElement(tree, 'ConfirmDialog');
   assert(deleteDialog?.props.title === '删除已归档的聊天？', 'single archive deletion opens a concise confirmation');
   assert(String(deleteDialog?.props.body).includes('Undo Alpha') && String(deleteDialog?.props.body).includes('无法恢复'), 'single archive deletion names the chat and explains irreversibility');
   deleteDialog?.props.onCancel();
-  assert(!requests.some((request) => request.path.endsWith('/delete-all')), 'cancelling permanent deletion sends no mutation');
-  rowDelete?.props.onClick();
+  assert(!requests.some((request) => request.path.endsWith('/deletion/execute')), 'cancelling permanent deletion sends no mutation');
+  await rowDelete?.props.onClick();
   await findComponentElement(harness.render({ t, refreshSidebar: () => {} }), 'ConfirmDialog')?.props.onConfirm();
   assert(!collectElements(harness.render({ t, refreshSidebar: () => {} })).some((element) => element.props?.className === 'dac-row'), 'successful single permanent deletion removes the row');
-  assert(requests.some((request) => request.path.endsWith('/delete-all') && request.options.body === '{"sessionIds":["undo-a"],"permanent":true}'), 'single archive deletion calls the permanent delete route');
+  assert(requests.some((request) => request.path.endsWith('/deletion/execute') && JSON.parse(request.options.body).sessions?.[0]?.sessionId === 'undo-a' && JSON.parse(request.options.body).fingerprint === 'fixture-scope'), 'single archive deletion calls the permanent delete route');
   harness.unmount();
   const normalFetch = globalThis.fetch;
   for (const status of [200, 409]) {
-    globalThis.fetch = async (url, options = {}) => String(url).endsWith('/delete-all')
+    globalThis.fetch = async (url, options = {}) => String(url).endsWith('/deletion/execute')
       ? { ok: status === 200, status, json: async () => ({
         deleted: [], pending: ['undo-a'], failed: [{ id: 'undo-a', reason: 'session-live-purge-pending' }],
       }) }
@@ -4838,7 +3954,7 @@ console.log('\n[11g] client half — permanent deletion and recoverable project 
     const renderPending = () => pendingHarness.render({ t, refreshSidebar: () => {} });
     renderPending(); pendingHarness.flushEffects();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    archiveRowDelete(renderPending(), 'Undo Alpha')?.props.onClick();
+    await archiveRowDelete(renderPending(), 'Undo Alpha')?.props.onClick();
     await findComponentElement(renderPending(), 'ConfirmDialog')?.props.onConfirm();
     const pendingElements = collectElements(renderPending());
     assert(!pendingElements.some((element) => element.props?.className === 'dac-row'),
@@ -4854,7 +3970,7 @@ console.log('\n[11g] client half — permanent deletion and recoverable project 
   projectHarness.flushEffects();
   await new Promise((resolve) => setTimeout(resolve, 0));
   const openMenu = () => {
-    collectElements(projectHarness.render({ t, refreshSidebar: () => {} })).find((element) => element.type === 'button' && element.props?.['aria-label'] === '…')?.props.onClick();
+    collectElements(projectHarness.render({ t, refreshSidebar: () => {} })).find((element) => element.type === 'button' && element.props?.['data-dac-workspace-menu'] === true)?.props.onClick();
     return collectElements(projectHarness.render({ t, refreshSidebar: () => {} }));
   };
   let menuElements = openMenu();
@@ -4879,13 +3995,13 @@ console.log('\n[11g] client half — permanent deletion and recoverable project 
   menuElements = openMenu();
   const permanentProjectAction = menuElements.find((element) => element.props?.role === 'menuitem' && elementText(element) === '全部删除');
   assert(permanentProjectAction !== undefined, 'project menu includes permanent deletion alongside recoverable move');
-  permanentProjectAction?.props.onClick();
+  await permanentProjectAction?.props.onClick();
   const projectDialog = findComponentElement(projectHarness.render({ t, refreshSidebar: () => {} }), 'ConfirmDialog');
   assert(projectDialog?.props.title === '删除该工作区的全部已归档聊天？' && projectDialog?.props.body.includes('未分组'), 'project permanent action names the entire workspace even for one chat');
   projectDialog?.props.onCancel();
   menuElements = openMenu();
   assert(!menuElements.some(element => element.props?.role === 'menuitem' && elementText(element) === '全部移入回收站'), 'workspace menu retires new recycle operations');
-  assert(!requests.some(request => request.path.endsWith('/delete-all') && JSON.parse(request.options.body).permanent !== true), 'workspace cannot silently invoke the old recycle route');
+  assert(!requests.some(request => request.path.endsWith('/deletion/execute') && JSON.parse(request.options.body).permanent !== true), 'workspace cannot silently invoke the old recycle route');
   projectHarness.unmount();
 	  globalThis.fetch = savedFetch;
 	  windowMock.URL = savedProjectExportUrl;
@@ -4909,7 +4025,7 @@ console.log('\n[11h] client half — workspace bulk archive dialog');
       mutations.push(JSON.parse(options.body));
       await new Promise((resolve) => { finishUnarchive = resolve; });
     }
-    return { ok: true, status: 200, json: async () => path.endsWith('/state') ? { metadataStatus: 'ready', trashStatus: 'ready', sessions: archived } : path.endsWith('/stats') ? { sessions: {} } : {} };
+    return { ok: true, status: 200, json: async () => path.endsWith('/state') ? { metadataStatus: 'ready', deletionStatus: 'ready', sessions: archived } : path.endsWith('/stats') ? { sessions: {} } : {} };
   };
   const t = clientCtx.locale.bind('settings.archived-chats');
   const harness = createHookHarness(clientCalls.slotRegister[0].component);
@@ -5076,14 +4192,15 @@ console.log('\n[11h] client half — workspace bulk archive dialog');
     && /\.dac-workspace-dialog \.dac-preview-head strong\{[^}]*font-size:16px;line-height:24px;font-weight:500/u.test(workspaceStyle)
     && /\.dac-workspace-copy\{[^}]*font-size:14px;line-height:22px/u.test(workspaceStyle),
   'workspace and other action confirmations share the official compact modal dimensions and typography');
-	  assert(workspaceStyle.includes('.dac-checkbox{width:16px;height:16px;'), 'workspace and import checkboxes keep a stable named size');
+	  assert(workspaceStyle.includes('.dac-checkbox{appearance:auto;width:auto;height:auto;')
+      && workspaceStyle.includes('accent-color:auto;'), 'workspace and import checkboxes use the same native size and selection style as the Host model list');
 	  assert(workspaceStyle.includes('.dac-workspace-choice-all{grid-template-columns:auto minmax(0,1fr);border:0;background:transparent'),
 	    'workspace Select all stays visually unboxed');
 	  assert(workspaceStyle.includes('.dac-workspace-choice-all:hover{background:transparent}')
 	    && workspaceStyle.includes('.dac-workspace-choice-all:focus-within{outline:0}')
-	    && workspaceStyle.includes('.dac-workspace-choice-all .dac-checkbox:focus-visible{outline:2px solid'),
+	    && workspaceStyle.includes('.dac-checkbox:focus-visible{outline:var(--dsw-focus-ring-width) solid'),
 	    'workspace Select all remains unboxed while its checkbox keeps a keyboard focus indicator');
-	  assert(/\.dac-workspace-actions>button\{[^}]*height:36px;[^}]*font-size:14px;line-height:22px;padding:0 14px/u.test(workspaceStyle),
+	  assert(/\.dac-workspace-actions>button:not\(\.dac-native-control\)\{[^}]*height:36px;[^}]*font-size:14px;line-height:22px;padding:0 14px/u.test(workspaceStyle),
 	    'confirmation actions match the official 36px outline buttons');
   assert(/\.dac-workspace-actions\{[^}]*justify-content:flex-end;flex-wrap:wrap;gap:8px/u.test(workspaceStyle)
     && !workspaceStyle.includes('@media (max-width:480px){.dac-workspace-dialog{'),
@@ -5115,6 +4232,7 @@ console.log('\n[11h] client half — workspace bulk archive dialog');
   assert(trapped && documentMock.activeElement === firstFocus && closed === 1, 'workspace bulk archive traps Tab and contains Escape inside its dialog');
   assert(!elementText(tree).includes('Safe title') && !elementText(tree).includes('session-live'), 'automatic preparation keeps the preview list hidden');
   const applyButton = elements.find((element) => element.props?.['data-workspace-archive-apply'] === '1');
+  assert(applyButton?.props.className === 'dac-btn-primary', 'archive confirmation uses the shared filled primary button');
   await applyButton?.props.onClick();
   tree = harness.render(props);
   assert(requests.some((request) => request.path.endsWith('/workspace-archive/apply') && request.options.body === '{"token":"token-1","nonce":"nonce-1"}'), 'workspace archive apply sends only preview token and nonce after confirmation');
@@ -5125,6 +4243,29 @@ console.log('\n[11h] client half — workspace bulk archive dialog');
   assert(dictionaries?.zh?.['workspaceArchive.action'] === '归档会话'
     && dictionaries?.en?.['workspaceArchive.action'] === 'Archive chats', 'workspace archive has matched approved menu action labels');
   harness.unmount();
+
+  for (const [language, title, expected, previewWorkspace] of [
+    ['zh', 'default-workspace', '默认工作区', true],
+    ['en', 'default-workspace', 'Default workspace', true],
+    ['zh', 'default-workspace', '默认工作区', false],
+    ['zh', 'My workspace', 'My workspace', true],
+  ]) {
+    globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({
+      token: 'localized-token', nonce: 'localized-nonce',
+      ...(previewWorkspace ? { workspace: { id: 'localized-workspace', title } } : {}),
+      sessions: [{ id: 'localized-chat' }], skipped: [],
+    }) });
+    const localizedHarness = createHookHarness(Dialog);
+    const localizedProps = { ...props, t: key => dictionaries[language][key] ?? key,
+      workspaceId: 'localized-workspace', workspaceTitle: title };
+    localizedHarness.render(localizedProps);
+    localizedHarness.flushEffects();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const localizedText = elementText(localizedHarness.render(localizedProps));
+    assert(localizedText.includes(expected) && !localizedText.includes('default-workspace'),
+      `workspace confirmation localizes ${language} display names from ${previewWorkspace ? 'preview' : 'fallback'} and preserves custom titles`);
+    localizedHarness.unmount();
+  }
 
 	  const multiPreviewBodies = [];
 	  const multiApplyBodies = [];
@@ -5234,7 +4375,7 @@ console.log('\n[11h2] client half — structured unarchive refusal preserves the
   const archived = [{ id: 'cwdless', title: 'Cwd-less chat', createdAt: 10, workspaceId: null, workspaceTitle: null }];
   globalThis.fetch = async (url) => {
     const path = String(url);
-    if (path.endsWith('/state')) return { ok: true, status: 200, json: async () => ({ metadataStatus: 'ready', trashStatus: 'ready', sessions: archived }) };
+    if (path.endsWith('/state')) return { ok: true, status: 200, json: async () => ({ metadataStatus: 'ready', deletionStatus: 'ready', sessions: archived }) };
     if (path.endsWith('/stats')) return { ok: true, status: 200, json: async () => ({ summary: { sessionCount: 1, totalBytes: 0, unavailableCount: 0 }, sessions: {} }) };
     if (path.endsWith('/unarchive-all')) return { ok: false, status: 409, json: async () => ({ error: 'session-main-list-unreachable', reason: 'cwd-missing', sessionIds: ['cwdless'] }) };
     return { ok: true, status: 200, json: async () => ({}) };
@@ -5272,7 +4413,7 @@ console.log('\n[11i] client half — workspace archive recovery and completed co
   };
   let conflictResult = null;
   try { conflictResult = await clientExports.__test.applyWorkspaceArchive('token', 'nonce'); } catch { /* red: intentional 409 is currently treated as an error */ }
-  assert(Array.isArray(conflictResult?.skipped) && Array.isArray(conflictResult?.failed) && Array.isArray(conflictResult?.snapshots), 'completed 409 workspace apply returns its safe final result');
+  assert(Array.isArray(conflictResult?.skipped) && Array.isArray(conflictResult?.failed) , 'completed 409 workspace apply returns its safe final result');
   const Dialog = clientExports.__test.WorkspaceArchiveDialog;
   const harness = createHookHarness(Dialog);
   const props = { t, workspaceId: 'recover', workspaceTitle: 'Recovered', onClose: () => {}, onApplied: async () => {}, restoreFocus: () => {} };
@@ -5442,6 +4583,7 @@ console.log('\n[11j] client half — workspace archive final coverage');
   const renderFinalResult = async (applyResult, overrides = {}) => {
     globalThis.fetch = async (url) => {
       const path = String(url);
+    if (path.endsWith('/deletion/preview')) return deletionPreviewFixture(options);
       if (path.endsWith('/workspace-archive/preview')) return { ok: true, status: 200, json: async () => ({ token: 'final-token', nonce: 'final-nonce', workspace: { id: 'ws-final', title: 'Final workspace' }, sessions: [{ id: 'candidate' }], skipped: [] }) };
       if (path.endsWith('/workspace-archive/apply')) return { ok: applyResult.status !== 409, status: applyResult.status ?? 200, json: async () => applyResult };
       return { ok: true, status: 200, json: async () => ({}) };
@@ -5568,16 +4710,27 @@ console.log('\n[11j] client half — workspace archive final coverage');
   let pageElements = collectElements(pageHarness.render(pageProps));
   let restoredSettingsFocus = 0;
   assert(!pageElements.some(element => element.type === 'button' && elementText(element) === t('workspaceArchive.settingsAction')), 'settings removes the standalone bulk archive trigger');
+  const filterOptions = [{ value: 'all', label: 'All', separatorAfter: true }, { value: 'one', label: 'One', separator: true }];
+  const filterMenu = clientExports.__test.FilterSelect({ t, value: 'all', onChange() {}, options: filterOptions, ariaLabel: 'Test filter' });
+  assert(filterMenu.props.children.filter(el => el.props?.role === 'separator').length === 1, 'adjacent filter group boundaries produce one separator');
+  const singleFilter = clientExports.__test.FilterSelect({ t, value: 'all', onChange() {}, options: filterOptions.slice(0, 1), ariaLabel: 'Test filter' });
+  assert(!singleFilter.props.children.some(el => el.props?.role === 'separator'), 'single filter option has no trailing separator');
   const unarchivedRows = [
     { id: 'chosen-a', title: 'First chat', createdAt: 10, updatedAt: 60, workspaceId: 'workspace-settings', workspaceTitle: 'Settings Project', busy: false },
-    { id: 'other-a', title: 'Other chat', createdAt: 20, updatedAt: 50, workspaceId: 'workspace-settings', workspaceTitle: 'Settings Project', busy: false },
+    { id: 'other-a', title: 'Other chat', origin: 'subagent', createdAt: 20, updatedAt: 50, workspaceId: 'workspace-settings', workspaceTitle: 'Settings Project', busy: false },
     { id: 'chosen-b', title: 'Second chat', createdAt: 30, updatedAt: 30, workspaceId: 'workspace-two', workspaceTitle: 'Second Project', busy: false },
     { id: 'live-a', title: 'Running chat', createdAt: 40, updatedAt: 40, workspaceId: 'workspace-two', workspaceTitle: 'Second Project', busy: true },
   ];
   const previousFetch = globalThis.fetch;
   const unarchivedPreviewRequests = [];
+  const unarchivedDeleteRequests = [];
   globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/deletion/preview')) return deletionPreviewFixture(options);
     if (String(url).endsWith('/unarchived')) return { ok: true, status: 200, json: async () => ({ sessions: unarchivedRows }) };
+    if (String(url).endsWith('/deletion/execute')) {
+      const body = JSON.parse(options.body); unarchivedDeleteRequests.push(body);
+      return { ok: true, status: 200, json: async () => ({ deleted: body.sessions.map(row => row.sessionId), pending: [], failed: [] }) };
+    }
     if (String(url).endsWith('/preview')) {
       const body = JSON.parse(options.body);
       unarchivedPreviewRequests.push(body);
@@ -5600,6 +4753,18 @@ console.log('\n[11j] client half — workspace archive final coverage');
   assert(unarchivedQueryBar?.props.className === 'dac-querybar-stacked'
     && unarchivedQueryBar.props.children[0]?.props.className === 'dac-search'
     && unarchivedQueryBar.props.children[1]?.props.className === 'dac-filters', 'Unarchived search stays above filters in a two-row toolbar');
+  const typeSortFilter = pageElements.find(el => el.type?.name === 'ChatTypeSortFilter');
+  assert(typeSortFilter?.props.typeFilter === 'all', 'Unarchived shares the Archived type and sort menu, initially showing All chats');
+  typeSortFilter?.props.onTypeChange('subagent');
+  assert(collectElements(pageHarness.render(pageProps)).filter(el => el.type?.name === 'GroupSection').flatMap(el => el.props.group.items).map(row => row.id).join(',') === 'other-a',
+    'Unarchived subagent filtering retains only official subagent-origin chats');
+  typeSortFilter?.props.onTypeChange('normal');
+  const regularGroups = collectElements(pageHarness.render(pageProps)).filter(el => el.type?.name === 'GroupSection');
+  assert(regularGroups.length === 2 && !regularGroups.flatMap(el => el.props.group.items).some(row => row.id === 'other-a'),
+    'Unarchived regular filtering retains its matching workspace groups and excludes subagents');
+  typeSortFilter?.props.onTypeChange('all');
+  pageTree = pageHarness.render(pageProps);
+  pageElements = collectElements(pageTree);
   const headerActions = pageElements.find(el => el.props?.className === 'dac-head-actions');
   const refreshButton = collectElements(headerActions).find(el => el.type === 'button' && elementText(el) === t('action.refresh'));
   assert(refreshButton && !refreshButton.props.disabled, 'refresh is an enabled text button in the top-right header');
@@ -5630,7 +4795,7 @@ console.log('\n[11j] client half — workspace archive final coverage');
   const workspaceTrigger = { focus: () => { workspaceMenuFocus += 1; } };
   collectElements(groupTree).find(el => el.props.className === 'dac-group-head').props.ref.current = { querySelector: () => workspaceTrigger };
   const groupMenuItems = collectElements(groupTree).filter(el => el.props?.role === 'menuitem');
-  assert(groupMenuItems.length === 1 && elementText(groupMenuItems[0]) === '全部归档', 'Unarchived workspace menu only contains Archive all');
+  assert(groupMenuItems.length === 2 && elementText(groupMenuItems[0]) === '全部归档' && elementText(groupMenuItems[1]) === '全部删除', 'Unarchived workspace menu contains Archive all and Delete all');
   groupMenuItems[0]?.props.onClick({ currentTarget: { focus() { throw new Error('unmounted menu item must not receive focus'); } } });
   let scopedDialog = findComponentElement(pageHarness.render(pageProps), 'WorkspaceArchiveDialog');
   assert(scopedDialog?.props.workspaces?.length === 1 && scopedDialog.props.workspaces[0].id === 'workspace-settings' && scopedDialog.props.workspaces[0].sessionIds === undefined, 'workspace archive covers the complete workspace even when search hides a chat');
@@ -5639,7 +4804,30 @@ console.log('\n[11j] client half — workspace archive final coverage');
   catch { assert(false, 'cancelling workspace archive restores the stable three-dot trigger'); }
   const rowActions = collectElements(groupTree).find(el => el.props?.className === 'dac-row-actions');
   const rowButtons = collectElements(rowActions).filter(el => el.type === 'button');
-  assert(rowButtons.length === 1 && elementText(rowButtons[0]) === '归档', 'Unarchived keeps only Archive in the row action area');
+  const rowDelete = rowButtons.find(el => el.props['aria-label'] === t('chat.deleteUnarchived'));
+  assert(rowButtons.length === 2 && rowDelete && rowButtons.some(el => elementText(el) === '归档'), 'Unarchived rows share the delete icon and retain Archive');
+  await rowDelete.props.onClick();
+  let deleteDialog = findComponentElement(pageHarness.render(pageProps), 'ConfirmDialog');
+  assert(deleteDialog?.props.title === '删除未归档的聊天？' && deleteDialog.props.body.includes('First chat')
+    && unarchivedDeleteRequests.length === 0, 'unarchived row deletion confirms the named chat before mutation');
+  deleteDialog.props.onCancel();
+  await rowDelete.props.onClick();
+  deleteDialog = findComponentElement(pageHarness.render(pageProps), 'ConfirmDialog');
+  await deleteDialog.props.onConfirm();
+  assert(JSON.stringify(unarchivedDeleteRequests) === JSON.stringify([{ source: 'unarchived', sessions: [{ sessionId: 'chosen-a', createdAt: 10, workspaceId: 'workspace-settings' }], fingerprint: 'fixture-scope', permanent: true }]),
+    'confirmed unarchived deletion uses the unified route with captured identity and scope');
+  unarchivedDeleteRequests.length = 0;
+  await groupMenuItems[1].props.onClick();
+  deleteDialog = findComponentElement(pageHarness.render(pageProps), 'ConfirmDialog');
+  assert(deleteDialog?.props.title === '删除该工作区的全部未归档聊天？'
+    && deleteDialog.props.body.includes('全部 2 个未归档聊天')
+    && unarchivedDeleteRequests.length === 0, 'workspace deletion confirms all unarchived members even when search hides one');
+  await deleteDialog.props.onConfirm();
+  assert(JSON.stringify(unarchivedDeleteRequests) === JSON.stringify([{ source: 'unarchived', sessions: [
+    { sessionId: 'chosen-a', createdAt: 10, workspaceId: 'workspace-settings' },
+    { sessionId: 'other-a', createdAt: 20, workspaceId: 'workspace-settings' },
+  ], fingerprint: 'fixture-scope', permanent: true }]), 'workspace deletion submits each confirmed identity with the workspace binding and excludes other workspaces');
+
   const unarchivedTitle = collectElements(groupTree).find(el => el.type === 'button' && el.props?.['aria-label'] === '查看对话 First chat');
   assert(unarchivedTitle?.props.className === 'dac-row-title dac-row-open' && unarchivedTitle.props.title === undefined, 'Unarchived opens preview from the title just like Archived');
   await unarchivedTitle?.props.onClick();
@@ -5654,6 +4842,7 @@ console.log('\n[11j] client half — workspace archive final coverage');
   scopedDialog?.props.onClose();
   groupTree = groupHarness.render({ ...group.props, group: { ...group.props.group, items: [unarchivedRows[3]], sessionIds: ['live-a'] }, menuOpen: false });
   assert(collectElements(groupTree).find(el => el.type === 'button' && elementText(el) === '归档')?.props.disabled !== true, 'running chats allow entering stop-and-archive confirmation');
+  assert(collectElements(groupTree).find(el => el.type === 'button' && el.props['aria-label'] === t('chat.deleteRunning'))?.props.disabled === true, 'running chats cannot be deleted from the unarchived row');
   const runningPreview = collectElements(groupTree).find(el => el.type === 'button' && el.props['aria-label'] === '查看对话 Running chat');
   assert(runningPreview?.props.disabled !== true && runningPreview !== undefined, 'running chats still allow read-only preview');
   await runningPreview?.props.onClick();
@@ -5667,10 +4856,12 @@ console.log('\n[11j] client half — workspace archive final coverage');
   const archivedTab = findTab(t('tab.archived'));
   pageTree = pageHarness.render(pageProps);
   rejectStateRefresh = true;
+  const sidebarBeforeWorkspaceApply = sidebarAttempts;
+  const workspaceRefreshesBeforeApply = workspaceRefreshes;
   await refreshDialog.props.onApplied();
   pageHarness.render(pageProps); pageHarness.flushEffects(); await new Promise((resolve) => setTimeout(resolve, 0));
   pageTree = pageHarness.render(pageProps);
-  assert(stateRequests >= 2 && sidebarAttempts === 1 && workspaceRefreshes === 1
+  assert(stateRequests >= 2 && sidebarAttempts === sidebarBeforeWorkspaceApply + 1 && workspaceRefreshes === workspaceRefreshesBeforeApply + 1
     && findTab(t('tab.insights')) === undefined,
   'workspace apply refreshes independent consumers despite failures without mounting retired Storage');
   const dialogHarness = createHookHarness(Dialog);
@@ -5705,14 +4896,18 @@ console.log('\n[11k] client half — confirmed archive success feedback');
       const body = path.endsWith('/workspace-archive/preview')
         ? { token: 'notice-token', nonce: 'notice-nonce', sessions: [{ id: 'one' }, { id: 'two' }], skipped: [] }
         : path.endsWith('/unarchived') ? { sessions: [{ id: 'one', workspaceId: 'notice-workspace', title: 'Notice chat' }] }
-        : { sessions: [], metadataStatus: 'ready', trashStatus: 'ready' };
+        : { sessions: [], metadataStatus: 'ready', deletionStatus: 'ready' };
       if (path.endsWith('/workspace-archive/apply')) return new Promise(resolve => {
         finishApply = () => resolve({ ok: !outcome.error, status: outcome.error ? 500 : 200, json: async () => outcome });
       });
       return { ok: true, status: 200, json: async () => body };
     };
     const page = createHookHarness(registration.component);
-    const props = { t, refreshWorkspaceArchiveConsumers: async () => {} };
+    let interactionsStarted = 0, interactionsFinished = 0;
+    const props = { t, refreshWorkspaceArchiveConsumers: async () => {}, beginArchiveInteraction: () => {
+      interactionsStarted++;
+      return { finish() { interactionsFinished++; } };
+    } };
     const render = () => page.render(props);
     render(); page.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
     collectElements(render()).find(el => el.props?.id === 'dac-tab-unarchived').props.onClick();
@@ -5724,6 +4919,8 @@ console.log('\n[11k] client half — confirmed archive success feedback');
     const applying = collectElements(dialog.render(dialogProps)).find(el => el.props?.['data-workspace-archive-apply'] === '1').props.onClick();
     assert(findComponentElement(render(), 'NoticeBanner')?.props.notice === null, 'archive feedback waits for the server result');
     finishApply(); await applying;
+    assert(interactionsStarted === 1 && interactionsFinished === 1,
+      'the normal archive entry protects settings before mutation and releases after success or failure');
     const tree = render();
     const banner = findComponentElement(tree, 'NoticeBanner');
     const fullSuccess = outcome.archived?.length > 0 && outcome.skipped.length === 0 && outcome.failed.length === 0;
@@ -5742,6 +4939,45 @@ console.log('\n[11k] client half — confirmed archive success feedback');
   }
   globalThis.fetch = savedFetch;
   Object.assign(moduleTable.react, savedHooks);
+}
+
+console.log('\n[11k-retry] deletion feedback resumes durable failures after reopening');
+{
+  const previousFetch = globalThis.fetch;
+  const previousSidebarRefresh = clientCalls.sidebarRefresh;
+  const targets = [{ sessionId: 'failed-chat', taskId: 'captured-task' }];
+  const attempts = [];
+  let complete = false;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/state')) return new Response(JSON.stringify({ sessions: [],
+      metadataStatus: 'ready', deletionStatus: 'ready', retryTargets: complete ? [] : targets }));
+    if (String(url).endsWith('/deletion-tasks/retry')) {
+      attempts.push(JSON.parse(options.body));
+      if (attempts.length === 1) return new Response(JSON.stringify({ deleted: [], pending: ['failed-chat'],
+        failed: [{ id: 'failed-chat', reason: 'EIO' }], retryTargets: targets }), { status: 409 });
+      complete = true;
+      return new Response(JSON.stringify({ deleted: ['failed-chat'], pending: [], failed: [], retryTargets: [] }));
+    }
+    return new Response(JSON.stringify({ sessions: [] }));
+  };
+  const registration = clientCalls.slotRegister.find(entry => entry.meta?.name === 'settings.section');
+  const props = { t: key => key === 'locale.intl' ? 'en-US' : key, ...registration.meta.inject() };
+  const harness = createHookHarness(registration.component);
+  try {
+    harness.render(props); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
+    let banner = findComponentElement(harness.render(props), 'NoticeBanner');
+    assert(typeof banner?.props.notice?.onRetry === 'function' && attempts.length === 0,
+      'reopening archive management restores an explicit retry without deleting automatically');
+    await banner.props.notice.onRetry();
+    banner = findComponentElement(harness.render(props), 'NoticeBanner');
+    assert(banner.props.notice.kind === 'error' && typeof banner.props.notice.onRetry === 'function',
+      'a failed retry keeps the action available');
+    await banner.props.notice.onRetry();
+    banner = findComponentElement(harness.render(props), 'NoticeBanner');
+    assert(banner.props.notice.kind === 'ok' && !banner.props.notice.onRetry
+      && JSON.stringify(attempts) === JSON.stringify([{ targets }, { targets }]),
+      'successful retry clears recovery feedback and sends only the recorded task identities');
+  } finally { harness.unmount(); globalThis.fetch = previousFetch; clientCalls.sidebarRefresh = previousSidebarRefresh; }
 }
 
 console.log('\n[11l] native archive feedback ownership');
@@ -5969,7 +5205,7 @@ console.log('\n[13e] client half — official Host slot compatibility and dispos
 
 console.log('\n[14] host half — an unreadable recycle catalog fails mutations closed');
 {
-  const trashFile = join(testHome, 'plugin-data', 'archived-chats', 'trash.json');
+  const trashFile = join(testHome, 'plugin-data', 'archived-chats', 'deletion-tasks.json');
   const before = existsSync(trashFile) ? readFileSync(trashFile, 'utf8') : null;
   const archivedBefore = [...workspaceState.archivedSessionIds];
   const target = archivedBefore[0];
@@ -5978,7 +5214,7 @@ console.log('\n[14] host half — an unreadable recycle catalog fails mutations 
 
   const state = await call(routes, '/plugins/dsh-archived-chats/state', mockReq('GET', {}));
   assert(state.status === 200, `state stays readable while the recycle catalog is corrupt (got ${state.status})`);
-  assert(state.json().trashStatus === 'unavailable', 'state reports the unreadable recycle catalog so the UI can warn');
+  assert(state.json().deletionStatus === 'unavailable', 'state reports the unreadable recycle catalog so the UI can warn');
 
   // An unreadable catalog cannot prove a session is NOT recycled. Unarchiving one
   // that is would resurrect it into the sidebar while its recycle record survives,
@@ -5986,7 +5222,7 @@ console.log('\n[14] host half — an unreadable recycle catalog fails mutations 
   const unarchive = await call(routes, '/plugins/dsh-archived-chats/unarchive', mockReq(
     'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionId: target }),
   ));
-  assert(unarchive.status === 503 && unarchive.json().error === 'trash-store-unavailable',
+  assert(unarchive.status === 503 && unarchive.json().error === 'deletion-tasks-unavailable',
     `single unarchive fails closed on an unreadable recycle catalog (got ${unarchive.status})`);
   const metadata = await call(routes, '/plugins/dsh-archived-chats/metadata', mockReq(
     'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionId: target, tags: ['nope'], note: '' }),
@@ -6014,13 +5250,7 @@ console.log('\n[15] host half — physical deletion refuses a location that is n
   persistence.locate = (header) => ({ kind: 'jsonl', path: join(flatRoot, `${header.id}.jsonl`) });
   const target = workspaceState.archivedSessionIds.find((id) => id !== 'session-live');
   writeFileSync(join(flatRoot, `${target}.jsonl`), 'target', 'utf8');
-  const moved = await call(routes, '/plugins/dsh-archived-chats/__test_seed_legacy_trash', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionId: target }),
-  ));
-  assert(moved.status === 200, `the session moves to the recycle bin first (got ${moved.status})`);
-  const purged = await call(routes, '/plugins/dsh-archived-chats/trash/purge', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: [target] }),
-  ));
+  const purged = await confirmedLegacyCall(routes, '/plugins/dsh-archived-chats/delete-all', { sessionIds: [target], permanent: true });
   assert(purged.json().failed?.[0]?.reason === 'session-location-unsafe',
     `purge refuses a non session-scoped location (got ${JSON.stringify(purged.json().failed)})`);
   assert(existsSync(sibling), 'the unrelated session log next to it is untouched');
@@ -6028,12 +5258,10 @@ console.log('\n[15] host half — physical deletion refuses a location that is n
   // The refusal lands before the irreversible step, so the durable purge intent
   // survives and a retry on a session-scoped layout still completes the job.
   persistence.locate = savedLocate;
-  const retried = await call(routes, '/plugins/dsh-archived-chats/trash/purge', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: [target] }),
-  ));
-  assert(retried.status === 200 && retried.json().purged.includes(target),
-    `retrying the purge afterwards completes it (got ${retried.status} ${retried.text})`);
-  const remaining = await call(routes, '/plugins/dsh-archived-chats/trash', mockReq('GET', {}));
+  const retried = await confirmedLegacyCall(routes, '/plugins/dsh-archived-chats/delete-all', { sessionIds: [target], permanent: true });
+  assert(retried.status === 200 && retried.json().deleted.includes(target),
+    'a fresh confirmed deletion completes after the unsafe layout is corrected');
+  const remaining = await call(routes, '/plugins/dsh-archived-chats/deletion-tasks', mockReq('GET', {}));
   assert(!remaining.json().sessions.some((row) => row.sessionId === target),
     'the completed purge leaves no stranded purge-pending record');
   rmSync(flatRoot, { recursive: true, force: true });
@@ -6167,21 +5395,11 @@ console.log('\n[18] host half — modern persistence reads work while unsupporte
   const stats = await call(modernRoutes, '/plugins/dsh-archived-chats/stats', mockReq('GET', {}));
   assert(stats.status === 200 && stats.json().sessions[id]?.status === 'unavailable',
     'modern read-only persistence reports physical storage measurement unavailable');
-  const moved = await call(modernRoutes, '/plugins/dsh-archived-chats/__test_seed_legacy_trash', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionId: id }),
-  ));
-  assert(moved.status === 200 && moved.json().trashed.includes(id), 'modern read-only session can enter the recycle bin with a protection snapshot');
-  const snapshotsBefore = readdirSync(join(modernHome, 'plugin-data', 'archived-chats', 'snapshots')).filter((name) => name !== '.staging');
-  const purge = await call(modernRoutes, '/plugins/dsh-archived-chats/trash/purge', mockReq(
-    'POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: [id] }),
-  ));
-  const trashAfter = await call(modernRoutes, '/plugins/dsh-archived-chats/trash', mockReq('GET', {}));
-  const snapshotsAfter = readdirSync(join(modernHome, 'plugin-data', 'archived-chats', 'snapshots')).filter((name) => name !== '.staging');
+  const purge = await confirmedLegacyCall(modernRoutes, '/plugins/dsh-archived-chats/delete-all', { sessionIds: [id], permanent: true });
   assert(purge.status === 409 && purge.json().failed?.[0]?.reason === 'purge-unsupported',
-    `modern read-only purge refuses with the stable capability code (got ${purge.status})`);
-  assert(trashAfter.json().sessions[0]?.state === 'trashed', 'unsupported purge preserves the original recycle state');
-  assert(snapshotsBefore.length === 1 && snapshotsAfter.length === 1 && snapshotsAfter[0] === snapshotsBefore[0],
-    `unsupported purge preserves the protection snapshot (before ${JSON.stringify(snapshotsBefore)}, after ${JSON.stringify(snapshotsAfter)})`);
+    'read-only persistence refuses unsupported deletion before recording intent');
+  const tasks = await call(modernRoutes, '/plugins/dsh-archived-chats/deletion-tasks', mockReq('GET', {}));
+  assert(tasks.json().sessions.length === 0, 'unsupported deletion creates no task');
   assert(modernState.archivedSessionIds.includes(id) && modernWorkspace.sessionIds.has(id),
     'unsupported purge preserves the original session and workspace ownership');
   assert(disposeCalls === 0, 'unsupported purge never reaches live-session disposal');
@@ -6190,7 +5408,7 @@ console.log('\n[18] host half — modern persistence reads work while unsupporte
   process.env.DSH_HOME = testHome;
 }
 
-console.log('\n[19] host half — orphan sessions are listed, and only orphans may be deleted');
+console.log('\n[19] retired maintenance routes and regular unarchived operations');
 {
   const orphanId = 'session-orphan';
   const blankId = 'session-blank';
@@ -6213,50 +5431,19 @@ console.log('\n[19] host half — orphan sessions are listed, and only orphans m
     writeFileSync(join(dir, 'session.jsonl.zstd'), 'fake');
   }
 
-  const earlier = Array.from({ length: 201 }, (_, n) => ({ id: `earlier-content-${n}`, createdAt: n, cwd: '/ws/one' }));
-  headerRows.push(...earlier);
-  for (const h of earlier) events[h.id] = [{ type: 'turn/start', data: {} }];
-  const beyondPrefix = await call(routes, '/plugins/dsh-archived-chats/orphans', mockReq('GET', {}));
-  assert(beyondPrefix.json().sessions.some(row => row.id === blankId), 'blank sessions beyond the first 200 candidates remain discoverable');
-  for (const h of earlier) { headerRows.splice(headerRows.indexOf(h), 1); delete events[h.id]; }
-
-  const scopedOrphanRequest = (method, body, suffix = '') => {
-    const req = mockReq(method, method === 'POST' ? { 'x-dsh-archived-chats': '1' } : {}, body);
-    req.url = `/plugins/dsh-archived-chats/orphans${suffix}?kind=subagent`;
-    return req;
-  };
-  const scopedList = await call(routes, '/plugins/dsh-archived-chats/orphans', scopedOrphanRequest('GET'));
-  assert(scopedList.json().sessions.map(row => row.id).join(',') === orphanId, 'residual checks only list subagents with a missing parent, never empty chats');
-  const invalidKindRequest = mockReq('GET', {}); invalidKindRequest.url = '/plugins/dsh-archived-chats/orphans?kind=blank';
-  const invalidKind = await call(routes, '/plugins/dsh-archived-chats/orphans', invalidKindRequest);
-  assert(invalidKind.status === 400, 'residual scan rejects unsupported kinds');
-  const badParentHeaders = [
-    { id: 'session-parentless-subagent', origin: 'subagent', createdAt: 30 },
-    { id: 'session-self-subagent', origin: 'subagent', parentSession: 'self-subagent', createdAt: 40 },
-  ];
-  headerRows.push(...badParentHeaders);
-  const excludesCorrupt = await call(routes, '/plugins/dsh-archived-chats/orphans', scopedOrphanRequest('GET'));
-  assert(excludesCorrupt.json().sessions.map(row => row.id).join(',') === orphanId, 'residual checks preserve subagents with missing or self-referential parent metadata');
-  for (const header of badParentHeaders) headerRows.splice(headerRows.indexOf(header), 1);
-  const scopedExport = await call(routes, '/plugins/dsh-archived-chats/orphans/export', scopedOrphanRequest('POST', new URLSearchParams({ sessionIds: JSON.stringify([blankId]) }).toString(), '/export'));
-  assert(scopedExport.status === 409, 'residual backups refuse a blank chat rather than broadening the accepted scope');
-  const scopedPreview = await call(routes, '/plugins/dsh-archived-chats/preview', mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionId: orphanId, scope: 'orphan-subagent' })));
-  const blankPreview = await call(routes, '/plugins/dsh-archived-chats/preview', mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionId: blankId, scope: 'orphan-subagent' })));
-  assert(scopedPreview.status === 200 && blankPreview.status === 404, 'residual preview accepts missing-parent subagents and refuses empty chats');
-
-  const listed = await call(routes, '/plugins/dsh-archived-chats/orphans', mockReq('GET', {}));
-  assert(listed.status === 200, `orphans list answers 200 (got ${listed.status})`);
-  const body = listed.json();
-  const ids = body.sessions.map((row) => row.id);
-  const orphanRow = body.sessions.find((row) => row.id === orphanId);
-  const blankRow = body.sessions.find((row) => row.id === blankId);
-  assert(orphanRow !== undefined, 'an orphaned subagent is listed');
-  assert(blankRow !== undefined, 'a blank top-level session is listed');
-  assert(!ids.includes('session-b'), 'a subagent whose parent still exists is not listed');
-  assert(!ids.includes('session-a'), 'an archived session is not listed');
-  assert(orphanRow?.kind === 'subagent' && blankRow?.kind === 'blank', 'each row carries its own kind');
-  assert(body.summary?.subagent >= 1 && body.summary?.blank >= 1, `the summary counts both kinds (${JSON.stringify(body.summary)})`);
-  assert(orphanRow?.sizeBytes > 0, `an orphan row carries its measured size (got ${orphanRow?.sizeBytes})`);
+  for (const suffix of ['orphans', 'orphans/delete', 'orphans/export']) {
+    assert(!routes.has(`/plugins/dsh-archived-chats/${suffix}`), `${suffix} is no longer registered`);
+  }
+  for (const scope of ['orphan', 'orphan-subagent']) {
+    for (const suffix of ['preview', 'preview/image']) {
+      const response = await call(routes, `/plugins/dsh-archived-chats/${suffix}`, mockReq('POST', { 'x-dsh-archived-chats': '1' },
+        JSON.stringify({ sessionId: orphanId, attachmentId: 'image', scope })));
+      assert(response.status === 400 && response.json().error === 'preview-scope-invalid', `${suffix} rejects retired ${scope} scope`);
+    }
+  }
+  const retiredDeletion = await call(routes, '/plugins/dsh-archived-chats/deletion/preview', mockReq('POST', { 'x-dsh-archived-chats': '1' },
+    JSON.stringify({ source: 'orphans', sessions: [{ sessionId: orphanId, createdAt: addedHeaders[0].createdAt }] })));
+  assert(retiredDeletion.status === 400, 'unified deletion rejects the retired maintenance source');
 
   // A regular unarchived conversation retains metadata after unarchiving.
   workspaces[0].sessionIds.push(nonemptyId);
@@ -6287,68 +5474,6 @@ console.log('\n[19] host half — orphan sessions are listed, and only orphans m
     assert(refusedBackup.status === 503 && !String(refusedBackup.headers['content-type']).includes('zip'), 'unarchived export refuses unreadable metadata rather than silently dropping tags and notes');
   } finally { writeFileSync(metadataFile, metadataBeforeFailure, 'utf8'); }
   workspaces[0].sessionIds.splice(workspaces[0].sessionIds.indexOf(nonemptyId), 1);
-
-  // Being an orphan is the only thing that authorizes deleting a session that
-  // was never archived, so a non-orphan id must be refused even with a valid
-  // guard header — otherwise this route could delete any chat by id.
-  const refused = await call(routes, '/plugins/dsh-archived-chats/orphans/delete',
-    mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: ['session-c'] })));
-  assert(refused.status === 409, `deleting a non-orphan is refused (got ${refused.status})`);
-  assert(refused.json().error === 'orphan-set-changed', 'the refusal names the changed orphan set');
-  assert(refused.json().sessionIds?.includes('session-c'), 'the refusal names the rejected id');
-  assert(headerRows.some((header) => header.id === 'session-c'), 'the refused session still exists');
-
-  const contentRefused = await call(routes, '/plugins/dsh-archived-chats/orphans/delete',
-    mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: [blankId, nonemptyId] })));
-  assert(contentRefused.status === 409, 'a mixed orphan request containing an unowned conversation is rejected as a whole');
-  assert(existsSync(join(tmp, blankId)) && existsSync(join(tmp, nonemptyId)), 'mixed rejection preserves both directories');
-
-  const unguarded = await call(routes, '/plugins/dsh-archived-chats/orphans/delete',
-    mockReq('POST', {}, JSON.stringify({ sessionIds: [orphanId] })));
-  assert(unguarded.status === 403, `an unguarded orphan delete is refused (got ${unguarded.status})`);
-
-  const refusedBlankCleanup = await call(routes, '/plugins/dsh-archived-chats/orphans/delete', scopedOrphanRequest('POST', JSON.stringify({ sessionIds: [blankId] }), '/delete'));
-  assert(refusedBlankCleanup.status === 409 && existsSync(join(tmp, blankId)), 'residual deletion cannot delete an empty chat even if its ID is submitted');
-
-  const deleted = await call(routes, '/plugins/dsh-archived-chats/orphans/delete',
-    mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: [orphanId] })));
-  assert(deleted.status === 200, `deleting an orphan succeeds (got ${deleted.status})`);
-  assert(deleted.json().deleted?.includes(orphanId), 'the deleted orphan is reported');
-  // The Host persistence list is the Host's to refresh; what this plugin owns is
-  // its registry header index, and leaving a stale entry there is what lets a
-  // deleted session come back as a ghost.
-  assert(!registry.headers.has(orphanId), 'the orphan is gone from the registry header index');
-  assert(!existsSync(join(tmp, orphanId)), 'the orphan session directory is gone');
-
-  const strictRoot = { id: 'session-strict-root', createdAt: 10, cwd: '/ws/one', parentSession: 'session-missing-parent', origin: 'subagent', delegationDepth: 1 };
-  const reachableChild = { id: 'session-reachable-child', createdAt: 20, cwd: '/ws/one', parentSession: strictRoot.id, origin: 'subagent', delegationDepth: 2 };
-  for (const header of [strictRoot, reachableChild]) {
-    headerRows.push(header); registry.headers.set(header.id, header); events[header.id] = [{ type: 'turn/start', data: {} }];
-    mkdirSync(join(tmp, header.id), { recursive: true }); writeFileSync(join(tmp, header.id, 'session.jsonl.zstd'), 'fake');
-  }
-  workspaceState.archivedSessionIds.push(reachableChild.id);
-  workspaces[0].sessionIds.push(reachableChild.id);
-  const strictDeletion = await call(routes, '/plugins/dsh-archived-chats/orphans/delete', scopedOrphanRequest('POST', JSON.stringify({ sessionIds: [strictRoot.id] }), '/delete'));
-  assert(strictDeletion.status === 200 && strictDeletion.json().deleted.join(',') === strictRoot.id, 'strict residual route deletes only selected records without cascading');
-  assert(existsSync(join(tmp, reachableChild.id)) && registry.headers.has(reachableChild.id) && workspaceState.archivedSessionIds.includes(reachableChild.id) && workspaces[0].sessionIds.includes(reachableChild.id), 'strict residual cleanup preserves unselected workspace and archived descendants');
-  workspaceState.archivedSessionIds = workspaceState.archivedSessionIds.filter(id => id !== reachableChild.id);
-  workspaces[0].sessionIds = workspaces[0].sessionIds.filter(id => id !== reachableChild.id);
-  for (const header of [strictRoot, reachableChild]) { const index = headerRows.indexOf(header); if (index !== -1) headerRows.splice(index, 1); registry.headers.delete(header.id); delete events[header.id]; }
-
-  // Unreadable blankness cannot authorize irreversible deletion.
-  const savedInspect = persistence.inspect;
-  persistence.inspect = async (id) => {
-    if (id === blankId) throw new Error('log temporarily unreadable');
-    return savedInspect(id);
-  };
-  const unreadable = await call(routes, '/plugins/dsh-archived-chats/orphans', mockReq('GET', {}));
-  assert(!unreadable.json().sessions.map((row) => row.id).includes(blankId),
-    'an unreadable log drops the row from the display list');
-  const stillAuthorized = await call(routes, '/plugins/dsh-archived-chats/orphans/delete',
-    mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionIds: [blankId] })));
-  assert(stillAuthorized.status === 409 && existsSync(join(tmp, blankId)),
-    'an unreadable log is refused and its directory is preserved');
-  persistence.inspect = savedInspect;
 
   // Restore the shared store so anything appended later starts from the baseline.
   for (const header of addedHeaders) {
@@ -6386,8 +5511,8 @@ console.log('\n[21] retired navigation');
   const t = clientCtx.locale.bind('settings.archived-chats');
   const tabs = clientExports.__test.ArchiveTabs({ pageMode: 'archived', onChange() {}, t });
   assert(!elementText(tabs).includes('空间与策略') && !elementText(tabs).includes('回收站'), 'empty legacy bin and retired policies stay out of navigation');
-  const legacyTabs = clientExports.__test.ArchiveTabs({ pageMode: 'archived', onChange() {}, t, showTrash: true });
-  assert(elementText(legacyTabs).includes('回收站') && !elementText(legacyTabs).includes('空间与策略'), 'existing or unreadable legacy records retain a recovery entry');
+  const legacyTabs = clientExports.__test.ArchiveTabs({ pageMode: 'archived', onChange() {}, t, showDeletionTasks: true });
+  assert(elementText(legacyTabs) === elementText(tabs), 'legacy flags cannot add internal deletion pages');
 }
 
 console.log('\n[selection] exact archived selections and cancellation');
@@ -6403,23 +5528,24 @@ console.log('\n[selection] exact archived selections and cancellation');
   let failNextDelete = false;
   globalThis.fetch = async (url, options = {}) => {
     const path = String(url);
+    if (path.endsWith('/deletion/preview')) return deletionPreviewFixture(options);
     if (path.endsWith('/export')) {
       requests.push({ path, ids: JSON.parse(new URLSearchParams(options.body).get('sessionIds')) });
       return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'application/zip' } });
     }
     let payload = {};
-    if (options.method === 'POST' && /\/(delete-all|unarchive-all)$/.test(path)) {
+    if (options.method === 'POST' && /\/(deletion\/execute|unarchive-all)$/.test(path)) {
       const body = JSON.parse(options.body);
       requests.push({ path, body });
-      if (path.endsWith('/delete-all') && failNextDelete) {
+      if (path.endsWith('/deletion/execute') && failNextDelete) {
         failNextDelete = false;
-        return new Response(JSON.stringify({ deleted: [], failed: body.sessionIds.map(id => ({ id, error: 'fixture-failure' })) }), { headers: { 'content-type': 'application/json' } });
+        return new Response(JSON.stringify({ deleted: [], failed: (body.sessionIds ?? body.sessions.map(row => row.sessionId)).map(id => ({ id, error: 'fixture-failure' })) }), { headers: { 'content-type': 'application/json' } });
       }
-      rows = rows.filter(row => !body.sessionIds.includes(row.id));
+      rows = rows.filter(row => !(body.sessionIds ?? body.sessions.map(row => row.sessionId)).includes(row.id));
       payload = path.endsWith('/unarchive-all') ? { ok: true }
-        : body.permanent ? { deleted: body.sessionIds, pending: [], failed: [] }
+        : body.permanent ? { deleted: body.sessionIds ?? body.sessions.map(row => row.sessionId), pending: [], failed: [] }
           : { error: 'recycle-retired' };
-    } else if (path.endsWith('/state')) payload = { metadataStatus: 'ready', trashStatus: 'ready', sessions: rows };
+    } else if (path.endsWith('/state')) payload = { metadataStatus: 'ready', deletionStatus: 'ready', sessions: rows };
     else if (path.endsWith('/stats')) payload = { summary: { sessionCount: rows.length, totalBytes: 0 }, sessions: {} };
     return new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json' } });
   };
@@ -6473,7 +5599,7 @@ console.log('\n[selection] exact archived selections and cancellation');
     const barElements = collectElements(toolbar());
     assert(['取消归档', '取消'].every(label => barElements.some(el => el.type === 'button' && elementText(el) === label)),
       'selection mode exposes deletion, unarchive and Cancel');
-    const more = findComponentElement(toolbar(), 'ChatActionMenu');
+    const more = findComponentElement(toolbar(), 'ToolbarMoreMenu');
     assert(collectElements(more).filter(el => el.type === 'button').map(elementText).join(',') === '导出选中',
       'selection More offers recycling and Export selected');
     const inlineSecondary = barElements.find(el => el.props?.className === 'dac-selection-secondary');
@@ -6486,13 +5612,13 @@ console.log('\n[selection] exact archived selections and cancellation');
     const directActions = toolbar().props.children.find(el => el?.props?.className === 'dac-selection-actions')?.props.children;
     const selectedDelete = collectElements(directActions[3]).find(el => el.type === 'button' && el.props?.['aria-label'] === '永久删除选中会话');
     assert(selectedDelete && elementText(selectedDelete) === '' && collectElements(selectedDelete).some(el => el.type === 'svg')
-      && directActions.filter(el => el?.type === 'button').map(elementText).join(',') === '取消归档,取消',
+      && directActions.map(el => typeof el?.type === 'function' ? renderTestComponent(el) : el).filter(el => el?.type === 'button').map(elementText).join(',') === '取消归档,取消',
       'selection exposes icon-only deletion after secondary actions and before Cancel');
     const selectionMoreTrigger = collectElements(more).find(el => el.type === 'summary');
     assert(selectionMoreTrigger?.props['aria-label'] === '更多选中项操作' && elementText(selectionMoreTrigger) === ''
       && collectElements(selectionMoreTrigger).some(el => el.type === 'svg'), 'selection More uses an accessible icon-only trigger');
     const beforeDeleteCancel = requests.length;
-    selectedDelete?.props.onClick();
+    await selectedDelete?.props.onClick();
     findComponentElement(render(), 'ConfirmDialog')?.props.onCancel();
     assert(requests.length === beforeDeleteCancel && elementText(toolbar()).includes('已选 2 项'), 'cancelling direct deletion preserves selected chats without a request');
     assert(button('移入回收站') === undefined, 'selected chats cannot enter the retired recycle flow');
@@ -6501,9 +5627,9 @@ console.log('\n[selection] exact archived selections and cancellation');
     button('取消')?.props.onClick();
     collectElements(render()).find(el => el.type === 'button' && el.props?.className === 'dac-action-trigger' && elementText(el) === '选择')?.props.onClick();
     rowCheck('select-b')?.props.onChange({ target: { checked: true } });
-    collectElements(toolbar()).find(el => el.type === 'button' && el.props?.['aria-label'] === '永久删除选中会话')?.props.onClick();
+    await collectElements(toolbar()).find(el => el.type === 'button' && el.props?.['aria-label'] === '永久删除选中会话')?.props.onClick();
     await findComponentElement(render(), 'ConfirmDialog')?.props.onConfirm();
-    assert(requests.at(-1)?.body.permanent === true && requests.at(-1)?.body.sessionIds.join(',') === 'select-b',
+    assert(requests.at(-1)?.body.permanent === true && requests.at(-1)?.body.sessions.map(row => row.sessionId).join(',') === 'select-b',
       'selected permanent deletion targets only the remaining checked chat');
   }
   harness.unmount();
@@ -6608,7 +5734,7 @@ console.log('\n[search] archive scope and request lifecycle');
   const ok = body => ({ ok: true, status: 200, json: async () => body });
   globalThis.fetch = async (url, options = {}) => {
     const path = String(url);
-    if (path.endsWith('/state')) return ok({ sessions: rows, metadataStatus: 'ready', trashStatus: 'ready' });
+    if (path.endsWith('/state')) return ok({ sessions: rows, metadataStatus: 'ready', deletionStatus: 'ready' });
     if (path.endsWith('/stats')) return ok({ summary: {}, sessions: {} });
     if (path.endsWith('/search')) {
       const body = JSON.parse(options.body); requests.push({ ...body, signal: options.signal });
@@ -6691,7 +5817,7 @@ console.log('\n[search] distinct candidate, content-hit, displayed-chat and fail
     let unreadable = true;
     globalThis.fetch = async (url, options = {}) => {
       const path = String(url);
-      if (path.endsWith('/state')) return ok({ sessions: rows, metadataStatus: 'ready', trashStatus: 'ready' });
+      if (path.endsWith('/state')) return ok({ sessions: rows, metadataStatus: 'ready', deletionStatus: 'ready' });
       if (path.endsWith('/stats')) return ok({ summary: {}, sessions: {} });
       if (path.endsWith('/search')) {
         const body = JSON.parse(options.body);
@@ -6739,46 +5865,7 @@ console.log('\n[search] distinct candidate, content-hit, displayed-chat and fail
 }
 
 console.log('\n[30] official archive changes and recycle membership');
-{
-  const id = 'session-official-recycle';
-  const header = { id, createdAt: 1786726800000, cwd: '/ws/one', origin: null };
-  headerRows.push(header); registry.headers.set(id, header);
-  events[id] = [{ type: 'turn/start', data: {} }];
-  workspaces[0].sessionIds.push(id);
-  mkdirSync(join(tmp, id), { recursive: true });
-  writeFileSync(join(tmp, id, 'session.jsonl.zstd'), 'synthetic conversation');
-  const updateOfficialArchive = async archivedSessionIds => {
-    const next = { ...workspaceState, archivedSessionIds };
-    // The real Host emits the committed domain value before setState updates
-    // the registry object's in-memory state.
-    for (const [event, listener] of listeners) {
-      if (event === 'domain/changed') listener({ domain: 'workspace', table: '', operation: 'put', value: next });
-    }
-    await registry.setState(next);
-  };
-  const move = () => call(routes, '/plugins/dsh-archived-chats/__test_seed_legacy_trash',
-    mockReq('POST', { 'x-dsh-archived-chats': '1' }, JSON.stringify({ sessionId: id })));
-  const read = path => call(routes, `/plugins/dsh-archived-chats/${path}`, mockReq('GET', {}));
-  await updateOfficialArchive([...workspaceState.archivedSessionIds, id]);
-  assert((await move()).json().trashed?.includes(id), 'officially archived chat moves to the recycle bin');
-  await updateOfficialArchive(workspaceState.archivedSessionIds.filter(key => key !== id));
-  const unarchived = await read('unarchived');
-  assert(unarchived.status === 200 && unarchived.json().sessions.some(row => row.id === id),
-    'official unarchive exposes the recycled chat in Unarchived');
-  assert(!(await read('trash')).json().sessions.some(row => row.sessionId === id),
-    'official unarchive releases the old recycle marker');
-  await updateOfficialArchive([...workspaceState.archivedSessionIds, id]);
-  assert((await read('state')).json().sessions.some(row => row.id === id),
-    'official rearchive returns the chat to Archived');
-  await move();
-  await updateOfficialArchive(workspaceState.archivedSessionIds.filter(key => key !== id));
-  await updateOfficialArchive([...workspaceState.archivedSessionIds, id]);
-  assert((await read('state')).json().sessions.some(row => row.id === id)
-    && !(await read('trash')).json().sessions.some(row => row.sessionId === id),
-    'immediate official unarchive and rearchive cannot revive an old recycle marker');
-  assert(existsSync(join(tmp, id, 'session.jsonl.zstd')) && registry.headers.has(id)
-    && workspaces[0].sessionIds.includes(id), 'official archive synchronization preserves the conversation and its workspace');
-}
+
 
 console.log('\n[official-core] direct idle chat archive');
 {
@@ -6848,7 +5935,7 @@ console.log('\n[official-core] title subscriptions and stable list refresh');
     const path = String(url);
     if (path.endsWith('/state')) stateReads++;
     if (path.endsWith('/unarchived') && releaseRefresh === 'hold') await new Promise(resolve => { releaseRefresh = resolve; });
-    return { ok: true, json: async () => ({ metadataStatus: 'ready', trashStatus: 'ready', sessions: path.endsWith('/state') || path.endsWith('/unarchived') ? [{ id:'sync-chat', title, workspaceId:'sync-ws', workspaceTitle:'Workspace', archiveEligible:true }] : [] }) };
+    return { ok: true, json: async () => ({ metadataStatus: 'ready', deletionStatus: 'ready', sessions: path.endsWith('/state') || path.endsWith('/unarchived') ? [{ id:'sync-chat', title, workspaceId:'sync-ws', workspaceTitle:'Workspace', archiveEligible:true }] : [] }) };
   };
   const harness = createHookHarness(registration.component);
   const props = { t, ...registration.meta.inject() };
@@ -6899,7 +5986,7 @@ console.log('\n[official-core] stop confirmation and Host-driven refresh');
     if (body) requests.push({ path, body });
     const row = { id: 'official-live', title: 'Official live', workspaceId: 'official-ws', busy: true, archiveEligible: true };
     let value = {};
-    if (path.endsWith('/state')) value = { sessions: archived ? [row] : [], metadataStatus: 'ready', trashStatus: 'ready' };
+    if (path.endsWith('/state')) value = { sessions: archived ? [row] : [], metadataStatus: 'ready', deletionStatus: 'ready' };
     if (path.endsWith('/unarchived')) value = { sessions: archived ? [] : [row], metadataStatus: 'ready' };
     if (path.endsWith('/workspace-archive/preview')) value = { workspace: { id: 'official-ws' }, token: 'confirmed', nonce: 'nonce', sessions: [row], skipped: [], stopSessionIds: [row.id] };
     if (path.endsWith('/workspace-archive/apply')) { applyCalls++; value = { archived: [row.id], skipped: [], failed: [], snapshots: [] }; }
@@ -6931,11 +6018,337 @@ console.log('\n[official-core] stop confirmation and Host-driven refresh');
     assert(cancelled === 1 && applyCalls === 0, 'cancel never stops or archives work');
     const action = collectElements(tree).find(el => el.props?.['data-workspace-archive-apply']);
     assert(action.props.className.includes('dac-stop-archive') && elementText(action) === '停止并归档', 'stop confirmation uses a distinct destructive action');
-    await action.props.onClick();
+    action.props.onClick();
     assert(requests.some(r => r.path.endsWith('/workspace-archive/preview') && r.body.includeActive === true), 'preview asks the Host-backed service about active chats');
     assert(requests.some(r => r.path.endsWith('/workspace-archive/apply') && r.body.stopActivity === true && r.body.token === 'confirmed'), 'explicit confirmation submits stop consent for the prepared token');
     dialog.unmount();
   } finally { globalThis.fetch = savedFetch; clientServices.workspaces.list = savedWorkspaceList; Object.assign(moduleTable.react, savedHooks); }
+}
+
+console.log('\n[search] page-isolated archived and unarchived search');
+{
+  const savedFetch = globalThis.fetch, savedHooks = { ...moduleTable.react };
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  const archivedRows = [{ id: 'unified-archived', title: 'Earlier work', workspaceId: 'unified-w', workspaceTitle: 'Unified' }];
+  const activeRows = [
+    { id: 'unified-active', title: 'Current work', workspaceId: 'unified-w', workspaceTitle: 'Unified', archiveEligible: true },
+    { id: 'unified-subagent', title: 'Worker work', origin: 'subagent', workspaceId: 'unified-w', workspaceTitle: 'Unified', archiveEligible: true },
+  ];
+  const requests = [], previewRequests = [];
+  const ok = body => ({ ok: true, status: 200, json: async () => body });
+  let holdSearch = false, releaseSearch;
+  globalThis.fetch = async (url, options = {}) => {
+    const path = String(url);
+    if (path.endsWith('/state')) return ok({ sessions: archivedRows, metadataStatus: 'ready', deletionStatus: 'ready' });
+    if (path.endsWith('/unarchived')) return ok({ sessions: activeRows, metadataStatus: 'ready', scheduleStatus: 'unsupported' });
+    if (path.endsWith('/search')) {
+      const body = JSON.parse(options.body); requests.push({ ...body, signal: options.signal });
+      const response = ok({ hits: body.sessionIds.map(sessionId => ({ sessionId, matches: [{ seq: 8, excerpt: `needle ${sessionId}` }] })), skipped: [] });
+      if (holdSearch) return new Promise(resolve => { releaseSearch = () => resolve(response); });
+      return response;
+    }
+    if (path.endsWith('/preview')) {
+      const body = JSON.parse(options.body); previewRequests.push(body);
+      return ok({ session: [...archivedRows, ...activeRows].find(row => row.id === body.sessionId), messages: [], total: 0, offset: 0, nextOffset: null });
+    }
+    return ok({});
+  };
+  const harness = createHookHarness(clientCalls.slotRegister[0].component);
+  const render = () => harness.render({ t });
+  const settle = async (ms = 0) => { render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, ms)); return render(); };
+  const elements = () => collectElements(render());
+  try {
+    await settle(); await settle();
+    elements().find(el => el.type === 'button' && el.props.role === 'tab' && elementText(el) === t('tab.unarchived')).props.onClick();
+    await settle(); await settle();
+    elements().find(el => el.type === 'input' && el.props.type === 'search').props.onChange({ target: { value: 'needle' } });
+    await settle(330);
+    assert(requests.at(-1)?.scope === 'unarchived' && requests.at(-1)?.sessionIds.join(',') === 'unified-active,unified-subagent', 'unarchived body search submits only unarchived candidates');
+    const snippet = elements().find(el => el.type === 'button' && el.props.className === 'dac-row-snippet');
+    assert(snippet !== undefined, 'unarchived body-only match renders a clickable excerpt');
+    if (snippet) {
+      await snippet.props.onClick();
+      assert(previewRequests.at(-1)?.scope === 'unarchived' && previewRequests.at(-1)?.seq === 8, 'unarchived excerpt opens the correct scope and message anchor');
+      findComponentElement(render(), 'PreviewDialog')?.props.onCancel();
+    }
+    assert(!elements().some(el => el.props?.ariaLabel === '搜索范围'), 'management pages do not offer cross-state search');
+    assert(!elementText(render()).includes('Earlier work'), 'Unarchived never shows archived rows');
+    elements().find(el => el.type?.name === 'ChatTypeSortFilter').props.onTypeChange('subagent');
+    await settle(330);
+    assert(requests.at(-1)?.sessionIds.join(',') === 'unified-subagent', 'Unarchived subagent filtering limits body-search candidates');
+    elements().find(el => el.type?.name === 'ChatTypeSortFilter').props.onTypeChange('normal');
+    await settle(330);
+    assert(requests.at(-1)?.sessionIds.join(',') === 'unified-active', 'Unarchived regular filtering limits body-search candidates');
+    holdSearch = true;
+    elements().find(el => el.type === 'input' && el.props.type === 'search').props.onChange({ target: { value: 'delayed' } });
+    await settle(330);
+    const old = requests.at(-1);
+    elements().find(el => el.props?.id === 'dac-tab-archived').props.onClick();
+    await settle();
+    assert(elements().find(el => el.type?.name === 'ChatTypeSortFilter').props.typeFilter === 'all', 'Unarchived type selection does not change Archived filters');
+    assert(old.signal.aborted, 'switching tabs cancels the earlier unarchived search');
+    holdSearch = false; releaseSearch?.(); await settle();
+    assert(!elementText(render()).includes('Current work'), 'late unarchived results cannot appear in Archived');
+    elements().find(el => el.type === 'input' && el.props.type === 'search').props.onChange({ target: { value: 'needle' } });
+    await settle(330);
+    assert(requests.at(-1)?.scope === undefined && requests.at(-1)?.sessionIds.join(',') === 'unified-archived', 'Archived searches only archived candidates using the existing API default');
+    assert(elements().filter(el => el.props?.className === 'dac-row').length === 1, 'Archived displays only its own body match');
+    const archivedSnippet = elements().find(el => el.type === 'button' && el.props.className === 'dac-row-snippet');
+    await archivedSnippet?.props.onClick();
+    assert(previewRequests.at(-1)?.sessionId === 'unified-archived' && previewRequests.at(-1)?.scope === undefined && previewRequests.at(-1)?.seq === 8, 'Archived snippet retains its own scope and anchor');
+    findComponentElement(render(), 'PreviewDialog')?.props.onCancel();
+    elements().find(el => el.props?.id === 'dac-tab-unarchived').props.onClick();
+    await settle(); await settle(330);
+    assert(!elementText(render()).includes('Earlier work'), 'returning to Unarchived cannot retain archived hits');
+  } finally { harness.unmount(); globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks); }
+}
+
+console.log('\n[lineage] shared read-only preview retains the selected title');
+{
+  const savedFetch = globalThis.fetch, savedHooks = { ...moduleTable.react };
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  const requests = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    requests.push({ path: String(url), body });
+    return { ok:true, json:async () => String(url).endsWith('/preview')
+      ? { session:{id:body.sessionId,title:null}, messages:[], total:0, nextOffset:null }
+      : { sessions:[], roots:[], workspaces:[], metadataStatus:'ready',deletionStatus:'ready' } };
+  };
+  const harness = createHookHarness(clientCalls.slotRegister[0].component);
+  const render = () => harness.render({t});
+  try {
+    render(); harness.flushEffects(); await new Promise(r=>setTimeout(r,0));
+    collectElements(render()).find(el=>el.props?.id==='dac-tab-lineage').props.onClick();
+    const panel = findComponentElement(render(), 'ArchiveRelationshipsPanel');
+    assert(typeof panel?.props.onPreview === 'function', 'relationship panel is wired to the shared preview');
+    await panel?.props.onPreview?.({id:'related',title:'Title resolved from events'}, 'lineage');
+    const dialog = findComponentElement(render(), 'PreviewDialog');
+    assert(dialog?.props.preview.session.title === 'Title resolved from events', 'preview keeps the resolved title when the header has no title');
+    assert(requests.some(r=>r.path.endsWith('/preview') && r.body.scope==='lineage') && !dialog?.props.onEditMetadata,
+      'related preview uses its bounded read-only scope without archive editing');
+    dialog?.props.onCancel();
+    assert(findComponentElement(render(), 'ArchiveRelationshipsPanel')?.props.key === panel?.props.key
+      && !findComponentElement(render(), 'PreviewDialog'), 'closing preview leaves the same relationship panel mounted');
+  } finally { harness.unmount(); globalThis.fetch=savedFetch; Object.assign(moduleTable.react,savedHooks); }
+}
+
+console.log('\n[lineage] canvas layout follows actual relationships');
+{
+  const layout = clientExports.__test.layoutLineage;
+  assert(typeof layout === 'function', 'relationship canvas has a data-driven layout');
+  if (layout) {
+    const roots = [{ id: 'a', children: [{ id: 'b', children: [{ id: 'd', children: [] }] }, { id: 'c', origin: 'subagent', children: [] }] }, { id: 'independent', children: [] }];
+    const result = layout(roots);
+    const byId = new Map(result.items.map(item => [item.node.id, item]));
+    assert(result.edges.map(edge => `${edge.from.node.id}:${edge.to.node.id}`).join(',') === 'a:b,a:c,b:d', 'only real parent-child pairs become edges; independent roots stay disconnected');
+    assert(result.edges.every(edge => edge.to.x > edge.from.x + edge.from.width), 'children sit to the right with space for their connection');
+    assert(result.items.every((a, i) => result.items.slice(i + 1).every(b => a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y)), 'cards and sibling subtrees do not overlap');
+    const refs = layout([{ id: 'ref', status: 'missing', children: [{ id: 'visible', children: [] }] }]);
+    assert(refs.items.length === 2, 'unavailable sources retain their managed descendants');
+    let deep = { id: '4999', children: [] };
+    for (let i = 4998; i >= 0; i--) deep = { id: String(i), children: [deep] };
+    const deepLayout = layout([deep]);
+    assert(deepLayout.items.length === 5000 && Number.isFinite(deepLayout.width), 'layout supports the Host maximum depth without recursive overflow');
+    assert(JSON.stringify(roots) === JSON.stringify([{ id: 'a', children: [{ id: 'b', children: [{ id: 'd', children: [] }] }, { id: 'c', origin: 'subagent', children: [] }] }, { id: 'independent', children: [] }]), 'layout does not rewrite official relationships');
+  }
+}
+
+console.log('\n[lineage] canvas pan, pointer-anchored wheel zoom and close control');
+{
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  const harness = createHookHarness(clientExports.__test.LineageCanvas);
+  const props = { nodes: [{ id: 'view', title: 'View', status: 'archived', children: [] }], diagnostics: [], searchQuery: '', label: 'Workspace', t };
+  let tree = harness.render(props);
+  const listeners = new Map();
+  let passive;
+  const viewport = { clientWidth: 400, clientHeight: 240,
+    getBoundingClientRect: () => ({ left: 10, top: 20 }),
+    addEventListener(name, callback, options) { listeners.set(name, callback); passive = options.passive; },
+    removeEventListener(name) { listeners.delete(name); },
+    setPointerCapture() {}, hasPointerCapture: () => false, releasePointerCapture() {} };
+  collectElements(tree).find(el => el.props?.className === 'dac-lineage-viewport').props.ref.current = viewport;
+  harness.flushEffects();
+  const render = () => { tree = harness.render(props); harness.flushEffects(); return tree; };
+  const position = () => {
+    const value = collectElements(render()).find(el => el.props?.className === 'dac-lineage-stage').props.style.transform;
+    return value.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/).slice(1).map(Number);
+  };
+  const before = position();
+  collectElements(tree).find(el => el.props?.['aria-label'] === '放大').props.onClick();
+  const zoomed = position();
+  assert(Math.abs((200 - before[0]) / before[2] - (200 - zoomed[0]) / zoomed[2]) < 0.001,
+    'zoom buttons preserve the point at the viewport center');
+  let view = collectElements(tree).find(el => el.props?.className === 'dac-lineage-viewport');
+  view.props.onPointerDown({ button: 0, pointerType: 'mouse', pointerId: 1, target: { closest: () => null }, currentTarget: viewport, clientX: 60, clientY: 60, preventDefault() {} });
+  view.props.onPointerMove({ pointerId: 1, currentTarget: viewport, clientX: 40, clientY: 30 });
+  const dragged = position();
+  assert(dragged[0] === zoomed[0] - 20 && dragged[1] === zoomed[1] - 30,
+    'a graph smaller than its viewport can still be dragged in both directions');
+  view.props.onPointerUp({ pointerId: 1, currentTarget: viewport });
+  view.props.onPointerDown({ button: 0, pointerType: 'mouse', target: { closest: () => ({}) }, currentTarget: viewport, clientX: 0, clientY: 0 });
+  view.props.onPointerMove({ currentTarget: viewport, clientX: 100, clientY: 100 });
+  assert(position()[0] === dragged[0], 'card interactions do not start canvas panning');
+  let prevented = 0;
+  const wheel = (extra = {}) => ({ clientX: 110, clientY: 100, deltaX: 0, deltaY: -40, deltaMode: 0,
+    preventDefault() { prevented++; }, stopPropagation() {}, ...extra });
+  listeners.get('wheel')(wheel({ ctrlKey: true }));
+  const scaled = position();
+  assert(passive === false && prevented === 1 && scaled[2] > dragged[2]
+    && Math.abs((100 - dragged[0]) / dragged[2] - (100 - scaled[0]) / scaled[2]) < 0.001,
+    'Ctrl wheel prevents browser zoom and anchors graph zoom at the pointer');
+  listeners.get('wheel')(wheel({ metaKey: true, deltaY: 40 }));
+  assert(position()[2] < scaled[2], 'Command wheel also zooms out');
+  view = collectElements(tree).find(el => el.props?.className === 'dac-lineage-viewport');
+  view.props.onPointerDown({ button: 0, pointerType: 'mouse', pointerId: 3, target: { closest: () => null }, currentTarget: viewport, clientX: 0, clientY: 0, preventDefault() {} });
+  listeners.get('wheel')(wheel({ ctrlKey: true }));
+  const wheelDuringDrag = position();
+  view.props.onPointerMove({ pointerId: 3, currentTarget: viewport, clientX: 100, clientY: 100 });
+  assert(position()[0] === wheelDuringDrag[0], 'wheel navigation ends the old drag so its next move cannot overwrite the zoom anchor');
+  const beforeScroll = position();
+  listeners.get('wheel')(wheel({ deltaX: 12, deltaY: 24 }));
+  const scrolled = position();
+  assert(scrolled[0] === beforeScroll[0] - 12 && scrolled[1] === beforeScroll[1] - 24 && scrolled[2] === beforeScroll[2],
+    'an unmodified wheel pans without zooming');
+  viewport.clientWidth = 1200; viewport.clientHeight = 800;
+  collectElements(tree).find(el => el.props?.['aria-label'] === '适应窗口').props.onClick();
+  const filled = position();
+  assert(filled[2] > 1 && filled[2] <= 2,
+    'explicit fit enlarges a small graph into available space within the zoom limit');
+  const fittedLayout = clientExports.__test.layoutLineage(props.nodes);
+  assert(Math.abs(filled[0] + fittedLayout.width * filled[2] / 2 - 600) < 0.01
+    && Math.abs(filled[1] + fittedLayout.height * filled[2] / 2 - 400) < 0.01,
+    'explicit fit recenters the complete graph after panning');
+  viewport.clientWidth = 400; viewport.clientHeight = 240;
+  collectElements(tree).find(el => el.props?.['aria-label'] === '适应窗口').props.onClick();
+  const fitted = position();
+  assert(fitted[0] >= 23.99 && fitted[1] >= 23.99
+    && fitted[0] + fittedLayout.width * fitted[2] <= 376.01
+    && fitted[1] + fittedLayout.height * fitted[2] <= 216.01,
+    'explicit fit shrinks the complete graph inside a small viewport with an outer margin');
+  view = collectElements(tree).find(el => el.props?.className === 'dac-lineage-viewport');
+  view.props.onPointerDown({ button: 0, pointerType: 'mouse', pointerId: 4, target: { closest: () => null }, currentTarget: viewport, clientX: 0, clientY: 0, preventDefault() {} });
+  view.props.onPointerMove({ pointerId: 4, clientX: 1000, clientY: 1000 });
+  view.props.onPointerUp({ pointerId: 4, currentTarget: viewport });
+  view.props.onFocusCapture({ target: { closest: () => ({ dataset: { nodeId: 'view' } }) } });
+  const revealed = position();
+  assert(revealed[0] + 28 * revealed[2] >= 0 && revealed[1] + 28 * revealed[2] >= 0,
+    'keyboard focus reveals an offscreen card through the shared camera');
+  const limit = clientExports.__test.clampLineageZoom;
+  assert(limit(0.001) === 0.05 && limit(8) === 2, 'zoom stays within supported limits');
+  harness.unmount();
+  assert(!listeners.has('wheel'), 'canvas removes its native wheel listener on unmount');
+}
+
+console.log('\n[lineage] graph modal focus, dismissal and readable initial scale');
+{
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  const harness = createHookHarness(clientExports.__test.LineageCanvas);
+  const previousActive = documentMock.activeElement;
+  const previousQuery = documentMock.querySelector;
+  const previousListener = documentListeners.get('keydown');
+  let closed = 0, restored = 0, stopped = 0;
+  const trigger = { focus() { restored++; documentMock.activeElement = trigger; } };
+  const first = { focus() { documentMock.activeElement = first; } };
+  const last = { focus() { documentMock.activeElement = last; } };
+  const panel = { contains: node => [panel, first, last].includes(node), querySelectorAll: () => [first, last],
+    focus() { documentMock.activeElement = panel; } };
+  const props = { nodes: Array.from({ length: 10 }, (_, i) => ({ id: `modal-${i}`, status: 'archived', children: [] })),
+    diagnostics: [], t, label: 'Family', onClose: () => { closed++; }, focusId: 'modal-9' };
+  let tree = harness.render(props);
+  tree.props.ref.current = panel;
+  const viewport = { clientWidth: 500, clientHeight: 400, scrollLeft: 0, scrollTop: 0 };
+  collectElements(tree).find(el => el.props?.className === 'dac-lineage-viewport').props.ref.current = viewport;
+  documentMock.activeElement = trigger;
+  harness.flushEffects();
+  tree = harness.render(props); harness.flushEffects();
+  assert(elementText(tree).includes('65%') && Number(collectElements(tree).find(el => el.props?.className === 'dac-lineage-stage').props.style.transform.match(/translate\([^,]+, ([-\d.]+)px/)[1]) < -1000,
+    'initial graph stays readable and positions the selected node');
+  const closeGraph = collectElements(tree).find(el => el.props?.['aria-label'] === '关闭会话谱系图');
+  assert(closeGraph?.type === 'button' && closeGraph.props.children?.type?.name === 'IconClose'
+    && !elementText(tree).includes('返回列表'), 'graph uses a labelled close icon in place of Back to list');
+  closeGraph.props.onClick();
+  assert(closed === 1, 'the close icon invokes the graph dismissal action');
+  closed = 0;
+  const event = key => ({ key, shiftKey: true, preventDefault() {}, stopPropagation() { stopped++; }, stopImmediatePropagation() {} });
+  documentListeners.get('keydown')(event('Tab'));
+  assert(documentMock.activeElement === last, 'initial Shift+Tab stays inside the graph dialog');
+  documentMock.querySelector = () => ({});
+  tree.props.onKeyDown(event('Escape'));
+  assert(closed === 0, 'the preview above the graph owns Escape while open');
+  documentMock.querySelector = () => null;
+  tree.props.onKeyDown(event('Escape'));
+  assert(closed === 1 && stopped === 1, 'graph Escape closes only the graph and stops propagation to Host settings');
+  harness.unmount();
+  assert(restored === 1 && documentMock.activeElement === trigger, 'closing the graph restores its list trigger focus');
+  documentMock.activeElement = previousActive;
+  documentMock.querySelector = previousQuery;
+  if (previousListener) documentListeners.set('keydown', previousListener);
+}
+
+
+console.log('\n[navigation] internal deletions stay out of the interface');
+{
+  const savedHooks = { ...moduleTable.react }, savedFetch = globalThis.fetch;
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  for (const unavailable of [false, true]) {
+    const requests = [];
+    globalThis.fetch = async url => {
+      const path = String(url);
+    requests.push(path);
+      const payload = path.endsWith('/deletion-tasks')
+        ? { deletionStatus: unavailable ? 'unavailable' : 'ready', sessions: [{ sessionId: 'pending-chat', taskId: 'captured-task' }] }
+        : { deletionStatus: unavailable ? 'unavailable' : 'ready', metadataStatus: 'ready', sessions: [] };
+      return { ok: true, status: 200, json: async () => payload };
+    };
+    const harness = createHookHarness(clientCalls.slotRegister[0].component);
+    const props = { t, refreshSidebar() {} };
+    harness.render(props); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
+    const tree = harness.render(props); harness.flushEffects();
+    const tabs = collectElements(tree).filter(el => el.props?.role === 'tab');
+    assert(tabs.map(elementText).join(',') === '已归档,未归档,来源与分支,关于', 'internal pending deletions and storage errors never add a navigation tab');
+    assert(!collectElements(tree).some(el => el.props?.id === 'dac-panel-deletions'), 'the settings page exposes no deletion-task panel');
+    assert(!requests.some(path => path.includes('/deletion-tasks')), 'the browser does not poll or expose internal deletion tasks');
+    harness.unmount();
+  }
+  globalThis.fetch = savedFetch; Object.assign(moduleTable.react, savedHooks);
+}
+
+console.log('\n[lineage] readable relationships and preview actions');
+{
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  const { filterLineageForest, LineageTreeNodes } = clientExports.__test;
+  const forest = [{ id: 'source', title: 'Planning', status: 'archived', isSeeded: false, children: [
+    { id: 'match', title: 'Needle solution', status: 'active', isSeeded: true, parentSession: 'source', children: [
+      { id: 'child', title: 'Follow-up', status: 'active', origin: 'subagent', parentSession: 'match', children: [] },
+    ] },
+  ] }];
+  const filtered = filterLineageForest(forest, 'needle');
+  const previews = [], folds = [];
+  const tree = LineageTreeNodes({ nodes: filtered, collapsed: new Set(), foldingDisabled: true, searchQuery: 'needle', t,
+    onToggle: id => folds.push(id), onPreview: (node, scope) => previews.push({ id: node.id, scope }) });
+  const elements = collectElements(tree);
+  const preview = elements.find(el => el.type === 'button' && el.props?.['aria-label'] === '查看对话 Needle solution');
+  assert(preview !== undefined && preview.props.disabled !== true, 'search-expanded matching title remains available for preview');
+  preview?.props.onClick();
+  assert(previews[0]?.id === 'match' && folds.length === 0, 'opening a conversation does not toggle its branch');
+  assert(elements.some(el => el.type === 'mark' && elementText(el).toLowerCase() === 'needle'), 'direct title match is highlighted');
+  assert(filtered[0].searchMatch === 'context' && filtered[0].children[0].searchMatch === 'direct'
+    && filtered[0].children[0].children[0].searchMatch === 'related', 'search distinguishes retained source, direct hit and related descendant');
+  assert(elementText(tree).includes('来源参考') && elementText(tree).includes('相关分支'), 'nonmatching context is explained separately from a direct hit');
+  assert(elementText(tree).includes('分支自：Planning') && elementText(tree).includes('子智能体来源：Needle solution'), 'fork and subagent parent relationships are explicit');
+  const missing = LineageTreeNodes({ nodes: [{ id:'missing', status:'missing', children:[] }], collapsed:new Set(), t, onPreview() { throw Error('missing source cannot preview'); } });
+  assert(!collectElements(missing).some(el => el.type === 'button' && el.props.className === 'dac-lineage-title'), 'missing source has no misleading preview action');
+  const foldable = LineageTreeNodes({ nodes: forest, collapsed: new Set(), t,
+    onSelect: id => folds.push(id), onPreview() {} });
+  const card = collectElements(foldable).find(el => el.props?.className?.startsWith('dac-lineage-row '));
+  card.props.onClick?.({ target: { closest: () => null } });
+  assert(folds.join() === 'source', 'clicking the card body selects its source path');
+  card.props.onClick?.({ target: { closest: () => ({ tagName: 'BUTTON' }) } });
+  assert(folds.length === 1, 'preview and copy buttons do not also trigger the card handler');
+  const searchCard = elements.find(el => el.props?.className?.startsWith('dac-lineage-row ') && !el.props.className.includes('context-card'));
+  searchCard.props.onClick?.({ target: { closest: () => null } });
+  assert(folds.length === 1, 'search card selection does not change the visible graph');
 }
 
 // Tear down the isolated DSH_HOME and session fixture dirs.

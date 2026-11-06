@@ -6,10 +6,8 @@ import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { apply as applyPlugin } from '../lib/index.js';
-import { withLegacyFixtures } from './helpers/legacy-recycle-fixture.mjs';
-const apply = withLegacyFixtures(applyPlugin);
-import { createSnapshotStore } from '../lib/snapshot.js';
-import { createTrashStore } from '../lib/trash.js';
+const apply = applyPlugin;
+import { createDeletionTaskStore } from '../lib/deletion-tasks.js';
 import { resolvePersistenceCompat } from '../lib/persistence-compat.js';
 
 async function exists(path) {
@@ -17,7 +15,7 @@ async function exists(path) {
 }
 
 // Real routes and disk-backed plugin stores; only the external Host is stubbed.
-async function fixture(t, { modern = false } = {}) {
+async function fixture(t, { modern = false, conversation = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'dac-lifecycle-'));
   const previousHome = process.env.DSH_HOME;
   process.env.DSH_HOME = root;
@@ -41,6 +39,10 @@ async function fixture(t, { modern = false } = {}) {
     { seq: 2, type: 'session/title', data: { title: 'Greeting from user (1)' } },
     { seq: 3, type: 'assistant/message', surfaceOp: 'append', data: { message: { role: 'assistant', source: { kind: 'model' }, content: [{ type: 'reasoning', text: 'child reasoning' }, { type: 'text', text: 'child reply' }] } } },
   ];
+  if (conversation) {
+    events.unshift({ type: 'turn/start', data: { turn: 1 } });
+    events.forEach((event, seq) => { event.seq = seq; });
+  }
   const persistence = {
     async list() { return await exists(path) ? [header] : []; },
     async inspect() { await access(path); return { meta: header, events }; },
@@ -85,21 +87,302 @@ async function fixture(t, { modern = false } = {}) {
     await routes.get('/plugins/dsh-archived-chats' + route)(req, res);
     return { status, body: result };
   }
-  const snapshots = createSnapshotStore({ root: join(data, 'snapshots'), persistence });
-  const trash = createTrashStore({ path: join(data, 'trash.json') });
-  return { root, data, path, registry, persistence: raw, services, reads, call, snapshots, trash,
+  const trash = createDeletionTaskStore({ path: join(data, 'deletion-tasks.json') });
+  return { root, data, path, registry, persistence: raw, services, reads, call, routes, trash,
     async restart() {
       mount();
       // Retirement does not perform destructive startup work. Retry is explicit.
       const before = await trash.get('chat-a');
       if (before?.state === 'purge-pending') {
         assert.equal((await trash.get('chat-a')).state, 'purge-pending');
-        await call('/trash/purge', { sessionIds: ['chat-a'] });
+        await call('/deletion-tasks/retry', { targets: [{ sessionId: 'chat-a', taskId: before.taskId }] });
       }
     } };
 }
 
-const permanentlyDelete = f => f.call('/delete-all', { sessionIds: ['chat-a'], permanent: true });
+async function confirmedDelete(f, route, body) {
+  const source = route === '/unarchived/delete' ? 'unarchived' : 'archive';
+  const ids = body.sessionIds ?? [body.sessionId];
+  const headers = await f.persistence.list().catch(() => []);
+  const sessions = ids.map(sessionId => ({ sessionId, createdAt: body.createdAt
+    ?? headers.find(header => (header.header ?? header).id === sessionId)?.createdAt ?? 10,
+    ...(Object.hasOwn(body, 'workspaceId') ? { workspaceId: body.workspaceId } : {}) }));
+  const preview = await f.call('/deletion/preview', { source, sessions });
+  // A refused preview must also fail the legacy route's preflight without
+  // writing intent. A nonmatching token cannot authorize any physical removal.
+  return f.call(route, { ...body, fingerprint: preview.body.plan?.fingerprint ?? 'refused-preview' });
+}
+
+const permanentlyDelete = f => confirmedDelete(f, '/delete-all', { sessionIds: ['chat-a'], permanent: true });
+
+test('legacy permanent-delete routes refuse requests without a scope fingerprint', async t => {
+  const f = await fixture(t);
+  for (const [route, body] of [['/delete', { sessionId: 'chat-a' }], ['/delete-all', { sessionIds: ['chat-a'] }]]) {
+    const result = await f.call(route, { ...body, permanent: true });
+    assert.equal(result.status, 409);
+    assert.equal(result.body.failed[0].reason, 'deletion-confirmation-required');
+    assert.equal(await exists(f.path), true);
+  }
+});
+
+test('state exposes legacy committed deletion recovery without removing session files', async t => {
+  const f = await fixture(t);
+  await mkdir(f.data, { recursive: true });
+  await writeFile(join(f.data, 'pending-deletions.json'), JSON.stringify({ ids: ['chat-a'] }));
+  const state = await f.call('/state');
+  assert.equal(state.status, 200);
+  assert.equal(state.body.retryTargets.length, 1);
+  assert.equal(state.body.retryTargets[0].sessionId, 'chat-a');
+  assert.equal(state.body.retryTargets[0].taskId, (await f.trash.get('chat-a')).taskId);
+  assert.equal(await exists(f.path), true);
+});
+
+test('unified deletion requires a current preview and clears the real session directory', async t => {
+  const f = await fixture(t);
+  const request = { source: 'archive', sessions: [{ sessionId: 'chat-a', createdAt: 10 }] };
+  const preview = await f.call('/deletion/preview', request);
+  assert.equal(preview.status, 200);
+  assert.equal(preview.body.plan.total, 1);
+  assert.equal(await exists(f.path), true);
+  const invalid = await f.call('/deletion/execute', { ...request, permanent: true, fingerprint: 'stale' });
+  assert.equal(invalid.status, 409);
+  assert.equal(await exists(f.path), true);
+  const deleted = await f.call('/deletion/execute', { ...request, permanent: true, fingerprint: preview.body.plan.fingerprint });
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(deleted.body.deleted, ['chat-a']);
+  assert.equal(await exists(f.path), false);
+  const replayed = await f.call('/deletion/execute', { ...request, permanent: true, fingerprint: preview.body.plan.fingerprint });
+  assert.equal(replayed.status, 200);
+  assert.deepEqual(replayed.body, deleted.body);
+});
+
+test('unified deletion rejects stale selection identities and cross-scope roots', async t => {
+  const f = await fixture(t);
+  const stale = await f.call('/deletion/preview', { source: 'archive', sessions: [{ sessionId: 'chat-a', createdAt: 99 }] });
+  assert.equal(stale.status, 409);
+  const hidden = await f.call('/deletion/preview', { source: 'unarchived', sessions: [{ sessionId: 'chat-a', createdAt: 10 }] });
+  assert.equal(hidden.status, 409);
+  const unconfirmed = await f.call('/deletion/execute', { source: 'archive', sessions: [{ sessionId: 'chat-a', createdAt: 10 }] });
+  assert.equal(unconfirmed.status, 400);
+  assert.equal(await exists(f.path), true);
+});
+
+test('a subagent appearing during final directory validation preserves the confirmed parent', async t => {
+  const f = await fixture(t);
+  const [parent] = await f.persistence.list();
+  const child = { ...parent, id: 'late-child', createdAt: 20, parentSession: parent.id, origin: 'subagent' };
+  let appeared = false;
+  const locate = f.persistence.locate;
+  f.persistence.list = async () => appeared ? [parent, child] : [parent];
+  f.persistence.locate = (...args) => {
+    if (existsSync(join(f.data, 'pending-deletions.json'))) appeared = true;
+    return locate(...args);
+  };
+  const request = { source: 'archive', sessions: [{ sessionId: parent.id, createdAt: parent.createdAt }] };
+  const preview = await f.call('/deletion/preview', request);
+  const result = await f.call('/deletion/execute', { ...request, permanent: true, fingerprint: preview.body.plan.fingerprint });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.failed.some(row => row.reason === 'deletion-scope-changed'), true);
+  assert.equal(await exists(f.path), true);
+});
+
+test('a confirmed child starting during final directory validation preserves its parent', async t => {
+  const f = await fixture(t);
+  const [parent] = await f.persistence.list();
+  const child = { ...parent, id: 'child', createdAt: 20, parentSession: parent.id, origin: 'subagent' };
+  const childPath = join(f.root, 'sessions', 'child', 'session.jsonl');
+  await mkdir(join(f.root, 'sessions', 'child'), { recursive: true });
+  await writeFile(childPath, 'child');
+  let running = false;
+  f.services.agents = { get: id => id === 'child' && running ? { status: 'running' } : undefined };
+  f.persistence.list = async () => [parent, child].filter(header => existsSync(header.id === 'child' ? childPath : f.path));
+  f.persistence.locate = header => {
+    if (existsSync(join(f.data, 'pending-deletions.json'))) running = true;
+    return { kind: 'jsonl', path: header.id === 'child' ? childPath : f.path };
+  };
+  const request = { source: 'archive', sessions: [{ sessionId: parent.id, createdAt: parent.createdAt }] };
+  const preview = await f.call('/deletion/preview', request);
+  const result = await f.call('/deletion/execute', { ...request, permanent: true, fingerprint: preview.body.plan.fingerprint });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.failed.some(row => row.reason === 'session-delete-running'), true);
+  assert.equal(await exists(f.path), true);
+  assert.equal(await exists(childPath), true);
+});
+
+for (const source of ['archive', 'unarchived']) {
+  test(`${source} unified deletion removes its confirmed subtree and preserves a fork on disk`, async t => {
+    const f = await fixture(t, { conversation: true });
+    const [parent] = await f.persistence.list();
+    const headers = [parent,
+      { ...parent, id: 'child', createdAt: 20, origin: 'subagent', parentSession: parent.id },
+      { ...parent, id: 'grandchild', createdAt: 30, origin: 'subagent', parentSession: 'child' },
+      { ...parent, id: 'fork', createdAt: 40, isSeeded: true, parentSession: parent.id }];
+    const pathFor = id => join(f.root, 'sessions', id, 'session.jsonl');
+    for (const header of headers.slice(1)) {
+      await mkdir(join(f.root, 'sessions', header.id), { recursive: true });
+      await writeFile(pathFor(header.id), header.id);
+    }
+    f.persistence.list = async () => headers.filter(header => existsSync(pathFor(header.id)));
+    f.persistence.locate = header => ({ kind: 'jsonl', path: pathFor(header.id) });
+    const inspect = f.persistence.inspect;
+    f.persistence.inspect = async id => ({ ...(await inspect(id)), meta: headers.find(header => header.id === id) });
+    const workspace = { id: 'workspace', sessionIds: [parent.id, 'fork'],
+      async detachSession(id) { this.sessionIds = this.sessionIds.filter(value => value !== id); } };
+    f.registry.list = () => [workspace];
+    f.registry.archiveSession = async () => {};
+    f.registry.state.archivedSessionIds = source === 'archive' ? [parent.id] : ['grandchild'];
+    const request = { source, sessions: [{ sessionId: parent.id, createdAt: parent.createdAt }] };
+    const preview = await f.call('/deletion/preview', request);
+    assert.equal(preview.status, 200, JSON.stringify(preview.body));
+    assert.equal(preview.body.plan.total, 3);
+    assert.equal(preview.body.plan.subagentCount, 2);
+    const result = await f.call('/deletion/execute', { ...request, permanent: true, fingerprint: preview.body.plan.fingerprint });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.deepEqual(result.body.failed, []);
+    assert.deepEqual(new Set(result.body.deleted), new Set([parent.id, 'child', 'grandchild']));
+    assert.deepEqual((await f.persistence.list()).map(header => header.id), ['fork']);
+    assert.deepEqual(workspace.sessionIds, ['fork']);
+    assert.deepEqual(f.registry.archivedSessionIds, []);
+  });
+}
+
+async function archiveInventoryFixture(t, { ungrouped = false } = {}) {
+  const f = await fixture(t);
+  await mkdir(f.data, { recursive: true });
+  const headers = ['visible-chat', 'child-chat', 'pending-chat'].map(id => ({
+    id, version: 1, createdAt: 10, cwd: f.root,
+    ...(id === 'child-chat' ? { origin: 'subagent' } : {}),
+  }));
+  f.registry.state.archivedSessionIds = [];
+  f.registry.list = () => ungrouped ? [] : [{ id: 'workspace-a', sessionIds: headers.map(row => row.id) }];
+  f.registry.archiveSession = async id => { f.registry.state.archivedSessionIds.push(id); };
+  f.persistence.list = async () => headers;
+  f.persistence.inspect = async id => ({ meta: headers.find(row => row.id === id), events: [{ seq: 0, type: 'turn/start', data: {} }] });
+  return f;
+}
+
+for (const ungrouped of [false, true]) {
+  test(`bulk archive excludes hidden subagents and pending deletions (${ungrouped ? 'ungrouped' : 'workspace'})`, async t => {
+    const f = await archiveInventoryFixture(t, { ungrouped });
+    await writeFile(join(f.data, 'pending-deletions.json'), JSON.stringify({ ids: ['pending-chat'] }));
+    assert.deepEqual((await f.call('/unarchived')).body.sessions.map(row => row.id), ['visible-chat']);
+    const preview = await f.call('/workspace-archive/preview', { workspaceId: ungrouped ? '__dac_ungrouped__' : 'workspace-a', includeActive: true });
+    assert.equal(preview.status, 200);
+    assert.deepEqual(preview.body.sessions.map(row => row.id), ['visible-chat']);
+    const applied = await f.call('/workspace-archive/apply', { token: preview.body.token, nonce: preview.body.nonce });
+    assert.deepEqual(applied.body.archived, ['visible-chat']);
+    assert.deepEqual(f.registry.archivedSessionIds, ['visible-chat']);
+  });
+}
+
+for (const duringInspection of [false, true]) {
+  test(`archive rechecks deletion eligibility ${duringInspection ? 'after inspection' : 'after confirmation'}`, async t => {
+    const f = await archiveInventoryFixture(t);
+    const preview = await f.call('/workspace-archive/preview', { workspaceId: 'workspace-a', sessionIds: ['visible-chat'] });
+    assert.equal(preview.status, 200);
+    const block = () => writeFile(join(f.data, 'pending-deletions.json'), JSON.stringify({ ids: ['visible-chat'] }));
+    if (duringInspection) {
+      const inspect = f.persistence.inspect;
+      f.persistence.inspect = async id => { await block(); return inspect(id); };
+    } else await block();
+    const applied = await f.call('/workspace-archive/apply', { token: preview.body.token, nonce: preview.body.nonce });
+    assert.deepEqual(applied.body.archived, []);
+    assert.equal(applied.body.skipped[0]?.reason, 'session-ineligible');
+    assert.deepEqual(f.registry.archivedSessionIds, []);
+  });
+}
+
+async function searchInventoryFixture(t) {
+  const f = await archiveInventoryFixture(t);
+  f.registry.state.archivedSessionIds = ['visible-chat'];
+  const inspect = f.persistence.inspect;
+  f.persistence.inspect = async id => ({ ...(await inspect(id)), events: [
+    { seq: 0, type: 'turn/start', data: {} },
+    { seq: 1, type: 'user/message', surfaceOp: 'append', data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'needle in conversation' }] } },
+  ] });
+  return f;
+}
+
+for (const [scope, expected] of [[undefined, ['visible-chat']], ['archive', ['visible-chat']], ['unarchived', ['pending-chat']]]) {
+  test(`content search respects ${scope ?? 'default'} visibility and marks result scopes`, async t => {
+    const f = await searchInventoryFixture(t);
+    const result = await f.call('/search', { query: 'needle', sessionIds: ['visible-chat', 'pending-chat', 'child-chat'], ...(scope ? { scope } : {}) });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.hits.map(hit => hit.sessionId), expected);
+    if (scope === 'unarchived') {
+      for (const hit of result.body.hits) assert.equal(hit.session.scope, hit.sessionId === 'visible-chat' ? 'archive' : 'unarchived');
+    }
+    assert.deepEqual(f.registry.archivedSessionIds, ['visible-chat'], 'search never archives a conversation');
+  });
+}
+
+test('unarchived search refuses pending deletions and cross-state scopes', async t => {
+  const f = await searchInventoryFixture(t);
+  await writeFile(join(f.data, 'pending-deletions.json'), JSON.stringify({ ids: ['pending-chat'] }));
+  const result = await f.call('/search', { query: 'needle', scope: 'unarchived', sessionIds: ['pending-chat', 'child-chat'] });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.hits, []);
+  for (const scope of ['all', 'trash']) assert.equal((await f.call('/search', { query: 'needle', scope })).status, 400);
+});
+
+test('unarchived search reuses inventory across candidate visibility checks', async t => {
+  const f = await searchInventoryFixture(t);
+  f.registry.state.archivedSessionIds = [];
+  const list = f.persistence.list;
+  let listings = 0;
+  f.persistence.list = async () => { listings++; return list(); };
+  const result = await f.call('/search', { query: 'needle', scope: 'unarchived', sessionIds: ['visible-chat', 'pending-chat'] });
+  assert.equal(result.body.hits.length, 2);
+  assert.ok(listings <= 2, `bounded batch inventory reads, got ${listings}`);
+});
+
+for (const ungrouped of [false, true]) {
+  test(`bulk archive reuses inventory during execution (${ungrouped ? 'ungrouped' : 'workspace'})`, async t => {
+    const f = await archiveInventoryFixture(t, { ungrouped });
+    const preview = await f.call('/workspace-archive/preview', { workspaceId: ungrouped ? '__dac_ungrouped__' : 'workspace-a', includeActive: true });
+    const list = f.persistence.list;
+    let listings = 0;
+    f.persistence.list = async () => { listings++; return list(); };
+    const result = await f.call('/workspace-archive/apply', { token: preview.body.token, nonce: preview.body.nonce });
+    assert.deepEqual(result.body.archived, ['visible-chat', 'pending-chat']);
+    assert.ok(listings <= 1, `bounded execution inventory reads, got ${listings}`);
+  });
+}
+
+test('unarchived search and anchored preview read current live events without stale cache hits', async t => {
+  const f = await searchInventoryFixture(t);
+  let text = 'first needle';
+  f.services.sessions.get = id => id === 'pending-chat' ? {
+    header: { id, createdAt: 10 },
+    snapshotEvents: () => [
+      { seq: 0, type: 'turn/start', data: {} },
+      { seq: 8, type: 'user/message', surfaceOp: 'append', data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }] } },
+    ],
+  } : undefined;
+  const search = () => f.call('/search', { query: 'needle', scope: 'unarchived', sessionIds: ['pending-chat'] });
+  assert.equal((await search()).body.hits[0]?.matches[0]?.seq, 8);
+  text = 'updated needle';
+  assert.match((await search()).body.hits[0]?.matches[0]?.excerpt ?? '', /updated needle/);
+  const preview = await f.call('/preview', { sessionId: 'pending-chat', scope: 'unarchived', seq: 8 });
+  assert.equal(preview.body.anchor?.status, 'found');
+  assert.match(JSON.stringify(preview.body.messages), /updated needle/);
+});
+
+test('unarchived search drops a hit that becomes archived while its body is read', async t => {
+  const f = await searchInventoryFixture(t);
+  const inspect = f.persistence.inspect;
+  let reads = 0;
+  f.persistence.inspect = async id => {
+    const result = await inspect(id);
+    if (id === 'pending-chat' && ++reads === 2) f.registry.state.archivedSessionIds.push(id);
+    return result;
+  };
+  const result = await f.call('/search', { query: 'needle', scope: 'unarchived', sessionIds: ['pending-chat'] });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.hits, []);
+  assert.equal(result.body.skipped[0]?.reason, 'session-not-visible');
+  assert.ok(reads >= 2, 'the candidate body must be read before the simulated state change');
+});
 
 for (const mode of ['single', 'all', 'ungrouped']) {
   test(`permanent ${mode} deletion never exposes archived chats in intermediate sidebar frames`, async t => {
@@ -138,8 +421,8 @@ for (const mode of ['single', 'all', 'ungrouped']) {
       sample('removed');
     };
     const result = mode === 'all'
-      ? await f.call('/delete-all', { sessionIds: ids, permanent: true })
-      : await f.call('/delete', { sessionId: ids[0], permanent: true });
+      ? await confirmedDelete(f, '/delete-all', { sessionIds: ids, permanent: true })
+      : await confirmedDelete(f, '/delete', { sessionId: ids[0], permanent: true });
     assert.equal(result.status, 200, JSON.stringify(result.body));
     assert.deepEqual(result.body.deleted, ids);
     assert.ok(frames.every(frame => frame.visible.every(visible => visible.length === 0)), JSON.stringify(frames));
@@ -191,6 +474,11 @@ test('failed workspace detach keeps archive protection and deletion intent until
   assert.deepEqual(JSON.parse(await readFile(join(f.data, 'pending-deletions.json'), 'utf8')).ids, ['chat-a']);
   assert.equal((await f.trash.get('chat-a'))?.state, 'purge-pending');
 
+  const recovery = await f.call('/state');
+  assert.deepEqual(recovery.body.sessions, []);
+  assert.deepEqual(recovery.body.retryTargets, result.body.retryTargets);
+  assert.deepEqual(recovery.body.retryTargets, [{ sessionId: 'chat-a', taskId: (await f.trash.get('chat-a')).taskId }]);
+
   failDetach = false;
   await f.restart();
   assert.deepEqual(members, []);
@@ -203,25 +491,83 @@ test('failed workspace detach keeps archive protection and deletion intent until
   ]);
 });
 
-test('lineage excludes unrelated unarchived chats and empty workspaces without archives', async t => {
+async function lineagePreviewFixture(t) {
+  const f = await fixture(t);
+  const [header] = await f.persistence.list();
+  const headers = [header,
+    { ...header, id: 'related-child', parentSession: 'chat-a', origin: 'subagent' },
+    { ...header, id: 'unrelated-chat' }];
+  f.persistence.list = async () => headers;
+  return { ...f, headers };
+}
+
+test('lineage preview reads related subagents without making them unarchived-list candidates', async t => {
+  const f = await lineagePreviewFixture(t);
+  const result = await f.call('/preview', { sessionId: 'related-child', scope: 'lineage' });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.session.id, 'related-child');
+  assert.ok(result.body.messages.length > 0);
+  assert.deepEqual(f.registry.archivedSessionIds, ['chat-a']);
+  assert.equal((await f.call('/preview', { sessionId: 'unrelated-chat', scope: 'lineage' })).status, 200);
+  assert.equal((await f.call('/preview/image', { sessionId: 'unrelated-chat', scope: 'lineage', attachmentId: 'image-0' })).status, 404);
+});
+
+for (const hidden of ['pending', 'trash-unavailable', 'removed']) {
+  test(`lineage preview refuses a body that becomes ${hidden} during its read`, async t => {
+    const f = await lineagePreviewFixture(t);
+    await mkdir(f.data, { recursive: true });
+    const inspect = f.persistence.inspect;
+    let read = false;
+    f.persistence.inspect = async id => {
+      const result = await inspect(id);
+      read = true;
+      if (hidden === 'pending') await writeFile(join(f.data, 'pending-deletions.json'), JSON.stringify({ ids: [id] }));
+      if (hidden === 'trash-unavailable') await writeFile(join(f.data, 'deletion-tasks.json'), 'invalid json');
+      if (hidden === 'removed') f.headers.splice(f.headers.findIndex(header => header.id === id), 1);
+      return result;
+    };
+    const result = await f.call('/preview', { sessionId: 'related-child', scope: 'lineage' });
+    assert.ok(read, 'the candidate content was read before eligibility changed');
+    assert.equal(result.status, hidden === 'trash-unavailable' ? 503 : 404);
+    assert.equal(result.body.messages, undefined);
+  });
+}
+
+test('lineage preview remains visible when its archived ancestor is unarchived during a read', async t => {
+  const f = await lineagePreviewFixture(t);
+  const inspect = f.persistence.inspect;
+  f.persistence.inspect = async id => {
+    const result = await inspect(id);
+    f.registry.state.archivedSessionIds = [];
+    return result;
+  };
+  const result = await f.call('/preview', { sessionId: 'related-child', scope: 'lineage' });
+  assert.equal(result.status, 200);
+  assert.ok(result.body.messages.length > 0);
+  assert.deepEqual(f.registry.archivedSessionIds, []);
+});
+
+test('lineage includes independent unarchived chats while omitting empty workspaces', async t => {
   const f = await fixture(t);
   f.registry.state.archivedSessionIds = [];
   f.registry.list = () => [{ id: 'empty-workspace', title: 'Empty workspace', path: f.root, sessionIds: [] }];
   const result = await f.call('/lineage');
   assert.equal(result.status, 200);
-  assert.equal(result.body.nodeCount, 0);
-  assert.deepEqual(result.body.roots, []);
+  assert.equal(result.body.nodeCount, 1);
+  assert.deepEqual(result.body.roots.map(node => [node.id, node.status]), [['chat-a', 'active']]);
   assert.deepEqual(result.body.workspaces, []);
   assert.equal(JSON.stringify(result.body).includes(f.root), false);
 });
 
+
+
 test('unreadable recycle metadata does not hide the official lineage inventory', async t => {
   const f = await fixture(t);
   await mkdir(f.data, { recursive: true });
-  await writeFile(join(f.data, 'trash.json'), 'invalid json');
+  await writeFile(join(f.data, 'deletion-tasks.json'), 'invalid json');
   const result = await f.call('/lineage');
   assert.equal(result.status, 200);
-  assert.equal(result.body.trashStatus, 'unavailable');
+  assert.equal(result.body.deletionStatus, 'unavailable');
   assert.equal(result.body.roots[0].id, 'chat-a');
   assert.equal(result.body.roots[0].status, 'archived');
 });
@@ -439,70 +785,22 @@ test('fork previews include inherited history and child reasoning without permit
   assert.equal(await readFile(f.path, 'utf8'), 'original');
 });
 
-test('fork recycle captures the inherited cut and restores the original archive without rewriting it', async t => {
-  const f = await fixture(t, { modern: true });
-  const move = await f.call('/__test_seed_legacy_trash', { sessionId: 'chat-a' });
-  assert.deepEqual(move.body.failed, []);
-  assert.deepEqual(move.body.trashed, ['chat-a']);
-  const record = await f.trash.get('chat-a');
-  assert.equal(record.title, 'Greeting from user (1)');
-  const checked = await f.snapshots.validate(record.snapshotId);
-  assert.equal(checked.record.version, 2);
-  assert.equal(checked.record.source.inheritedEventCount, 2);
-  assert.equal(checked.record.source.meta.parentSession, 'parent');
-  assert.equal(checked.record.source.events[1].data.content[0].text, 'inherited hello');
-  const preview = await f.call('/preview', { sessionId: 'chat-a', scope: 'trash' });
-  assert.equal(preview.status, 200);
-  assert.equal(preview.body.messages[1].role, 'assistant');
-  const restored = await f.call('/trash/restore', { sessionIds: ['chat-a'] });
-  assert.deepEqual(restored.body.restored, ['chat-a']);
-  assert.equal(await f.trash.get('chat-a'), null);
-  assert.deepEqual(f.registry.archivedSessionIds, ['chat-a']);
-  assert.equal(f.reads.opened, f.reads.closed);
-  assert.equal(await readFile(f.path, 'utf8'), 'original');
-  assert.deepEqual((await permanentlyDelete(f)).body.deleted, ['chat-a']);
-  assert.equal(await exists(f.path), false);
-});
+
 
 test('unreadable deletion authority never removes an archived original', async t => {
   const f = await fixture(t);
   await mkdir(f.data, { recursive: true });
-  await writeFile(join(f.data, 'trash.json'), 'unreadable authority');
+  await writeFile(join(f.data, 'deletion-tasks.json'), 'unreadable authority');
   const result = await permanentlyDelete(f);
-  assert.equal(result.body.failed[0].reason, 'trash-store-unavailable');
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, 'deletion-tasks-unavailable');
   assert.equal(await exists(f.path), true);
   assert.equal(await exists(join(f.data, 'pending-deletions.json')), false);
 });
 
-test('snapshot cleanup failure preserves the original and durable intent until a later purge succeeds', async t => {
-  const f = await fixture(t);
-  await f.call('/__test_seed_legacy_trash', { sessionId: 'chat-a' });
-  await f.call('/trash/restore', { sessionIds: ['chat-a'] });
-  const snapshotRoot = join(f.data, 'snapshots');
-  const savedRoot = join(f.data, 'snapshots-saved');
-  await rename(snapshotRoot, savedRoot);
-  await writeFile(snapshotRoot, 'simulate unavailable snapshot directory');
-  const failed = await permanentlyDelete(f);
-  assert.equal(failed.body.failed.length, 1);
-  assert.equal(await exists(f.path), true);
-  assert.equal((await f.trash.get('chat-a')).state, 'purge-pending');
-  await rm(snapshotRoot);
-  await rename(savedRoot, snapshotRoot);
-  assert.deepEqual((await f.call('/trash/purge', { sessionIds: ['chat-a'] })).body.purged, ['chat-a']);
-  assert.equal(await exists(f.path), false);
-  assert.equal((await f.snapshots.inventory()).valid.length, 0);
-});
 
-test('permanent archive deletion removes snapshots left by an earlier recycle and restore', async t => {
-  const f = await fixture(t);
-  assert.deepEqual((await f.call('/__test_seed_legacy_trash', { sessionId: 'chat-a' })).body.trashed, ['chat-a']);
-  assert.deepEqual((await f.call('/trash/restore', { sessionIds: ['chat-a'] })).body.restored, ['chat-a']);
-  assert.equal((await f.snapshots.inventory()).valid.length, 1);
-  assert.deepEqual((await permanentlyDelete(f)).body.deleted, ['chat-a']);
-  assert.equal(await exists(f.path), false);
-  assert.equal((await f.snapshots.inventory()).valid.length, 0);
-  assert.equal((await f.trash.load()).records.size, 0);
-});
+
+
 
 test('failed cold permanent deletion keeps durable intent and completes on explicit retry after restart without the original header', async t => {
   const f = await fixture(t);
@@ -520,30 +818,9 @@ test('failed cold permanent deletion keeps durable intent and completes on expli
   assert.deepEqual(JSON.parse(await readFile(join(f.data, 'pending-deletions.json'), 'utf8')).ids, []);
 });
 
-test('archive permanent deletion cannot bypass an existing Recycle Bin record', async t => {
-  const f = await fixture(t);
-  await f.call('/__test_seed_legacy_trash', { sessionId: 'chat-a' });
-  const before = await f.trash.get('chat-a');
-  const result = await permanentlyDelete(f);
-  assert.equal(result.status, 409);
-  assert.equal(result.body.failed[0].reason, 'session-in-trash');
-  assert.deepEqual(await f.trash.get('chat-a'), before);
-  assert.equal(await exists(f.path), true);
-  assert.equal((await f.snapshots.inventory()).valid.length, 1);
-});
 
-test('Empty Recycle Bin rejects an absent confirmation scope without changing data', async t => {
-  const f = await fixture(t);
-  assert.deepEqual((await f.call('/__test_seed_legacy_trash', { sessionId: 'chat-a' })).body.trashed, ['chat-a']);
-  const before = await f.trash.get('chat-a');
 
-  const result = await f.call('/trash/empty', {});
 
-  assert.equal(result.status, 400);
-  assert.equal(result.body.error, 'trashTargets-required');
-  assert.deepEqual(await f.trash.get('chat-a'), before);
-  assert.equal(await exists(f.path), true);
-});
 
 test('unsupported or unsafe direct deletion fails before recording intent or disposing a live chat', async t => {
   for (const unsafe of [false, true]) {
@@ -612,7 +889,7 @@ test('physical deletion rechecks exclusivity when another session appears after 
   let inventories = 0;
   f.persistence.list = async () => {
     inventories += 1;
-    return inventories < 4 ? [requested] : [requested, other];
+    return existsSync(join(f.data, 'deletion-tasks.json')) ? [requested, other] : [requested];
   };
   f.persistence.locate = (header) => ({ kind: 'jsonl', path: header.id === 'chat-a' ? f.path : otherPath });
 
@@ -650,4 +927,158 @@ test('missing official unarchive capability fails without direct state writes', 
   assert.equal(result.status, 501);
   assert.equal(result.body.error, 'unarchive-unsupported');
   assert.deepEqual(f.registry.archivedSessionIds, ['chat-a']);
+});
+
+
+test('unreadable fork provenance blocks purge before removing original data', async t => {
+  const f = await fixture(t);
+  await mkdir(f.data, { recursive: true });
+  await writeFile(join(f.data, 'fork-provenance.json'), '{broken');
+  const response = await f.call('/delete', { sessionId: 'chat-a' });
+  assert.equal(response.body.ok, false);
+  assert.equal(await exists(f.path), true);
+  assert.equal(f.registry.archivedSessionIds.includes('chat-a'), true);
+});
+
+test('unarchived deletion checks the visible identity and uses the durable purge path', async t => {
+  const f = await fixture(t, { conversation: true });
+  f.registry.state.archivedSessionIds = [];
+  f.registry.archiveSession = async () => {};
+
+  const response = await confirmedDelete(f, '/unarchived/delete', { sessionId: 'chat-a', createdAt: 10, permanent: true });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.deleted, ['chat-a']);
+  assert.equal(await exists(f.path), false);
+});
+
+test('unarchived deletion rejects replaced and newly archived chats without removing data', async t => {
+  const f = await fixture(t, { conversation: true });
+  f.registry.state.archivedSessionIds = [];
+  f.registry.archiveSession = async () => {};
+
+  let response = await confirmedDelete(f, '/unarchived/delete', { sessionId: 'chat-a', createdAt: 99, permanent: true });
+  assert.equal(response.status, 409);
+  assert.equal(await exists(f.path), true);
+  f.registry.state.archivedSessionIds = ['chat-a'];
+  response = await confirmedDelete(f, '/unarchived/delete', { sessionId: 'chat-a', createdAt: 10, permanent: true });
+  assert.equal(response.status, 409);
+  assert.equal(await exists(f.path), true);
+});
+
+test('unarchived deletion refuses running chats and unconfirmed requests', async t => {
+  const f = await fixture(t, { conversation: true });
+  f.registry.state.archivedSessionIds = [];
+  f.registry.archiveSession = async () => {};
+
+  f.services.agents = { get: () => ({ status: 'running' }) };
+  const response = await confirmedDelete(f, '/unarchived/delete', { sessionId: 'chat-a', createdAt: 10, permanent: true });
+  assert.equal(response.status, 409);
+  assert.equal(response.body.error, 'unarchived-delete-running');
+  assert.equal(await exists(f.path), true);
+  const unconfirmed = await f.call('/unarchived/delete', { sessionId: 'chat-a', createdAt: 10 });
+  assert.equal(unconfirmed.status, 400);
+});
+
+for (const startLocation of [1, 2]) {
+  test(`a chat starting after deletion intent at check ${startLocation} is preserved and retry stays guarded`, async t => {
+    const f = await fixture(t, { conversation: true });
+    f.registry.state.archivedSessionIds = [];
+    f.registry.archiveSession = async () => {};
+    let running = false;
+    let cancellations = 0;
+    f.services.agents = { get: () => ({ status: running ? 'running' : 'idle', cancel() { cancellations++; } }) };
+    const locate = f.persistence.locate;
+    let locations = 0;
+    f.persistence.locate = (...args) => { if (existsSync(join(f.data, 'deletion-tasks.json')) && ++locations === startLocation) running = true; return locate(...args); };
+    let response = await confirmedDelete(f, '/unarchived/delete', { sessionId: 'chat-a', createdAt: 10, permanent: true });
+    assert.equal(response.status, 409);
+    assert.equal(cancellations, 0);
+    assert.equal(await exists(f.path), true);
+    const pending = await f.trash.get('chat-a');
+    assert.equal(pending.purgeRequireIdle, true);
+    response = await f.call('/deletion-tasks/retry', { targets: [{ sessionId: 'chat-a', taskId: pending.taskId }] });
+    assert.equal(cancellations, 0);
+    assert.equal(await exists(f.path), true);
+    running = false;
+    const originalList = f.persistence.list;
+    f.persistence.list = async () => (await originalList()).map(header => ({ ...header, createdAt: 99 }));
+    response = await f.call('/deletion-tasks/retry', { targets: [{ sessionId: 'chat-a', taskId: pending.taskId }] });
+    assert.equal(await exists(f.path), true);
+    assert.equal(response.body.failed.some(item => item.reason === 'unarchived-delete-changed' || item.reason === 'session-identity-changed'), true);
+  });
+}
+
+
+test('workspace unarchived deletion validates membership before removing a chat', async t => {
+  const f = await fixture(t, { conversation: true });
+  f.registry.state.archivedSessionIds = [];
+  f.registry.archiveSession = async () => {};
+  const changed = await confirmedDelete(f, '/unarchived/delete', { sessionId: 'chat-a', createdAt: 10, permanent: true, workspaceId: 'old-workspace' });
+  assert.equal(changed.status, 409);
+  assert.equal(await exists(f.path), true);
+  const removed = await confirmedDelete(f, '/unarchived/delete', { sessionId: 'chat-a', createdAt: 10, permanent: true, workspaceId: null });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body.deleted, ['chat-a']);
+});
+
+test('lineage hides only verified independent unarchived drafts', async t => {
+  const f = await fixture(t);
+  const [header] = await f.persistence.list();
+  const headers = [
+    { ...header, id: 'empty-draft' },
+    { ...header, id: 'named-draft', title: 'Renamed before chatting' },
+    { ...header, id: 'untitled-chat' },
+    { ...header, id: 'legacy-content' },
+    { ...header, id: 'unreadable-chat' },
+    { ...header, id: 'source-root' },
+    { ...header, id: 'branch', parentSession: 'source-root' },
+    { ...header, id: 'seeded-source-unknown', isSeeded: true },
+    { ...header, id: 'archived-empty' },
+    { ...header, id: 'subagent', origin: 'subagent' },
+  ];
+  f.registry.state.archivedSessionIds = ['archived-empty'];
+  f.registry.list = () => [{ id: 'workspace-a', title: 'Workspace A', sessionIds: headers.map(row => row.id) }];
+  f.persistence.list = async () => headers;
+  f.persistence.inspect = async id => {
+    if (id === 'unreadable-chat') throw new Error('log unavailable');
+    const events = id === 'untitled-chat' ? [{ type: 'turn/start', data: {} }]
+      : id === 'legacy-content' ? [{ type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: 'Real content without a turn marker' }] } }]
+      : [];
+    return { meta: headers.find(row => row.id === id), events };
+  };
+  const result = await f.call('/lineage');
+  assert.equal(result.status, 200);
+  const ids = [];
+  const pending = [...result.body.roots];
+  while (pending.length > 0) {
+    const node = pending.pop(); ids.push(node.id); pending.push(...node.children);
+  }
+  assert.deepEqual(ids.sort(), headers.filter(row => !['empty-draft', 'named-draft'].includes(row.id)).map(row => row.id).sort());
+  assert.equal(result.body.nodeCount, 8);
+  assert.equal((await f.call('/preview', { sessionId: 'empty-draft', scope: 'lineage' })).status, 404);
+  assert.equal(headers.length, 10, 'filtering does not delete Host records');
+});
+
+test('lineage uses fresh live events to classify an independent draft', async t => {
+  const f = await fixture(t);
+  const [header] = await f.persistence.list();
+  f.registry.state.archivedSessionIds = [];
+  let events = [];
+  f.services.sessions = { get: () => ({ header, snapshotEvents: () => events }) };
+  assert.equal((await f.call('/lineage')).body.nodeCount, 0);
+  events = [{ type: 'turn/start', data: {} }];
+  assert.equal((await f.call('/lineage')).body.nodeCount, 1);
+});
+
+
+test('legacy recovery and retention routes are removed while task retries remain explicit', async t => {
+  const f = await fixture(t);
+  for (const suffix of ['/trash', '/trash/restore', '/trash/export', '/trash/purge', '/trash/empty',
+    '/retention/policy', '/retention/policy/preview', '/retention/preview', '/retention/apply']) {
+    assert.equal(f.routes.has('/plugins/dsh-archived-chats' + suffix), false);
+  }
+  assert.equal(f.routes.has('/plugins/dsh-archived-chats/deletion-tasks/retry'), true);
+  const response = await f.call('/deletion-tasks/retry', { targets: [{ sessionId: 'chat-a', taskId: 'stale' }] });
+  assert.equal(response.status, 409);
+  assert.equal(await exists(f.path), true);
 });

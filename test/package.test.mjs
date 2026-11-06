@@ -19,13 +19,10 @@ const publicRoutes = [
   'GET  /plugins/dsh-archived-chats/state',
   'GET  /plugins/dsh-archived-chats/stats',
   'GET  /plugins/dsh-archived-chats/lineage',
+  'POST /plugins/dsh-archived-chats/unarchived/delete',
   'GET  /plugins/dsh-archived-chats/workspace-archive/workspaces',
   'POST /plugins/dsh-archived-chats/workspace-archive/preview',
   'POST /plugins/dsh-archived-chats/workspace-archive/apply',
-  'POST /plugins/dsh-archived-chats/retention/policy/preview',
-  'POST /plugins/dsh-archived-chats/retention/policy',
-  'POST /plugins/dsh-archived-chats/retention/preview',
-  'POST /plugins/dsh-archived-chats/retention/apply',
   'POST /plugins/dsh-archived-chats/preview',
   'POST /plugins/dsh-archived-chats/preview/image',
   'POST /plugins/dsh-archived-chats/search',
@@ -33,20 +30,16 @@ const publicRoutes = [
   'POST /plugins/dsh-archived-chats/import/inspect',
   'POST /plugins/dsh-archived-chats/import/restore',
   'POST /plugins/dsh-archived-chats/metadata',
-  'GET  /plugins/dsh-archived-chats/trash',
-  'POST /plugins/dsh-archived-chats/trash/export',
-  'POST /plugins/dsh-archived-chats/trash/restore',
-  'POST /plugins/dsh-archived-chats/trash/purge',
-  'POST /plugins/dsh-archived-chats/trash/empty',
+  'GET  /plugins/dsh-archived-chats/deletion-tasks',
+  'POST /plugins/dsh-archived-chats/deletion-tasks/retry',
+  'POST /plugins/dsh-archived-chats/deletion/preview',
+  'POST /plugins/dsh-archived-chats/deletion/execute',
   'POST /plugins/dsh-archived-chats/unarchive',
   'POST /plugins/dsh-archived-chats/unarchive-all',
   'POST /plugins/dsh-archived-chats/delete',
   'POST /plugins/dsh-archived-chats/delete-all',
   'GET  /plugins/dsh-archived-chats/unarchived',
   'POST /plugins/dsh-archived-chats/unarchived/export',
-  'GET  /plugins/dsh-archived-chats/orphans',
-  'POST /plugins/dsh-archived-chats/orphans/delete',
-  'POST /plugins/dsh-archived-chats/orphans/export',
 ];
 
 function parseArchitectureRoutes(contents) {
@@ -54,10 +47,17 @@ function parseArchitectureRoutes(contents) {
   return block?.split(/\r?\n/);
 }
 
+test('retired residual maintenance has no shipped UI, routes or public types', () => {
+  assert.doesNotMatch(read('lib/client.js'), /ResidualSessionsDialog|fetchOrphans|onMaintenance|dac-about-maintenance/);
+  assert.doesNotMatch(read('lib/index.js'), /collectOrphans|requireOrphanRows|\/orphans|orphan-subagent/);
+  assert.doesNotMatch(read('lib/deletion.js'), /deleteOrphans/);
+  assert.doesNotMatch(read('lib/types/index.d.ts'), /OrphanSessionRow/);
+});
+
 test('package and lock root publish one approved identity', () => {
   assert.equal(
     packageManifest.description,
-    '查看、搜索和管理会话归档，支持工作区批量归档、标签备注、ZIP 备份和手动残留会话检查。',
+    '查看、搜索和管理会话归档，支持工作区批量归档、标签备注、ZIP 备份和会话谱系。',
   );
   assert.equal(packageManifest.author, 'Ultronen');
   assert.equal(packageLock.name, packageManifest.name);
@@ -69,22 +69,22 @@ test('package and lock root publish one approved identity', () => {
 test('each public overview states its own destructive and backup boundaries', () => {
   const expected = new Map([
     ['README.md', [
-      'exact recycle-record incarnations shown at confirmation',
+      'Deletion failures',
       'Successful exports are validated against the same format and budgets as import before the download starts.',
       'A chat without a working directory remains in Archived',
     ]],
     ['README.zh-CN.md', [
-      '确认时展示的精确回收记录实例',
+      '删除失败',
       '导出成功前会按导入使用的同一格式和预算完成验证。',
       '没有工作目录的聊天会留在已归档',
     ]],
     ['docs/USER_GUIDE.md', [
-      'exact recycle-record incarnations displayed for confirmation',
+      'Deletion failures show an error with Retry',
       'A successful plugin export is therefore within the plugin importer\'s format and size budgets.',
       'Download started does not mean the browser has saved the file to disk.',
     ]],
     ['docs/USER_GUIDE.zh-CN.md', [
-      '确认时展示的精确回收记录实例',
+      '删除失败',
       '因此，本插件成功导出的备份会符合本插件导入器的格式与大小预算。',
       '“已开始下载”不表示浏览器已将文件保存到磁盘。',
     ]],
@@ -286,13 +286,12 @@ test(`published ${packageVersion} package contains public docs and runtime but n
     'lib/lineage.js',
     'lib/metadata.js',
     'lib/persistence-compat.js',
-    'lib/recycle.js',
+    'lib/deletion.js',
+    'lib/deletion-tasks.js',
     'lib/restore.js',
     'lib/search.js',
     'lib/session-graph.js',
-    'lib/snapshot.js',
     'lib/stats.js',
-    'lib/trash.js',
     'lib/types/client/index.d.ts',
     'lib/types/index.d.ts',
     'lib/workspace-bulk-archive.js',
