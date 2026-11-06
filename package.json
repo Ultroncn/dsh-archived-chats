@@ -1,7 +1,7 @@
 {
   "name": "dsh-archived-chats",
   "version": "1.6.4",
-  "description": "DeepSeek Harness 的会话备份、搜索与溯源层：跨已归档会话全文搜索、ZIP 导入导出、来源与分叉只读溯源。与会话管理插件并存使用。",
+  "description": "查看、搜索和管理会话归档，支持工作区批量归档、标签备注、ZIP 备份和手动残留会话检查。",
   "license": "MIT",
   "author": "Ultronen",
   "repository": {
@@ -16,19 +16,16 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
-    "backup",
-    "search",
-    "full-text-search",
-    "lineage",
-    "fork",
-    "conversation-search",
-    "session-lineage",
     "archive",
-    "local-first",
-    "sessions",
-    "web-ui",
+    "backup",
+    "recycle-bin",
     "snapshot",
-    "recycle-bin"
+    "session-lineage",
+    "full-text-search",
+    "local-first",
+    "conversation-search",
+    "sessions",
+    "web-ui"
   ],
   "type": "module",
   "scripts": {

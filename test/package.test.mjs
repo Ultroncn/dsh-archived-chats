@@ -57,7 +57,7 @@ function parseArchitectureRoutes(contents) {
 test('package and lock root publish one approved identity', () => {
   assert.equal(
     packageManifest.description,
-    'DeepSeek Harness 的会话备份、搜索与溯源层：跨已归档会话全文搜索、ZIP 导入导出、来源与分叉只读溯源。与会话管理插件并存使用。',
+    '查看、搜索和管理会话归档，支持工作区批量归档、标签备注、ZIP 备份和手动残留会话检查。',
   );
   assert.equal(packageManifest.author, 'Ultronen');
   assert.equal(packageLock.name, packageManifest.name);

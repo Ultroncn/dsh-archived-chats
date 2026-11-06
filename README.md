@@ -8,7 +8,7 @@
 
 <h1>Archive Management</h1>
 
-<p><strong>Back up, search, and trace any past DSH conversation. Works alongside your session manager.</strong></p>
+<p><strong>Find past DSH chats, manage archives, and keep ZIP backups.</strong></p>
 <p><code>dsh-archived-chats</code></p>
 
 <p>
@@ -28,11 +28,11 @@
 
 </div>
 
-Archive Management is the backup, search, and lineage layer for DeepSeek Harness conversations. It complements session managers rather than replacing them: use it when you need to find what was said, keep a portable copy, or trace where a conversation came from.
+Archive Management adds conversation search, organization and backups to DeepSeek Harness. Find a past solution, preview its context, archive by workspace, or save a ZIP before deleting a chat.
 
-- **Full-text search:** search titles, message bodies, tool results, tags and notes across all archived chats; jump directly to the matching turn in context.
-- **Portable backups:** export and import JSON + Markdown ZIPs with attachment references; imports preview before writing and skip existing IDs to avoid overwrites.
-- **Conversation lineage:** read-only Origins & Branches view shows sources, forks and subagent relationships for any archived chat, including inherited history across fork points.
+- **Find past work:** search titles, messages, tool results, tags and notes; open a match with surrounding context.
+- **Organize chats:** manage Archived and Unarchived, including workspace groups, ungrouped chats, bulk actions, tags and notes.
+- **Keep a backup:** export JSON + Markdown ZIPs; preview imports and skip existing IDs instead of overwriting them.
 
 > This document describes 1.6.4. New recycle operations and automatic cleanup are retired; see [upgrading](#upgrading-from-older-releases) for existing data.
 
