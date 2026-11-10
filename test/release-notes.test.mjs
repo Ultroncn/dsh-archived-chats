@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { sectionFor } from '../scripts/release-notes.mjs';
 
@@ -60,7 +61,7 @@ test('the script refuses a tag that does not match the package version', () => {
     '--tag', tag,
     '--package', manifest,
     '--output', output,
-  ], { cwd: join(import.meta.dirname, '..'), encoding: 'utf8' });
+  ], { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8' });
 
   const matched = run('v2.0.1', notes);
   assert.equal(matched.status, 0, matched.stderr);
