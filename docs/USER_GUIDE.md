@@ -4,7 +4,7 @@ Current source removes the previous recovery UI and keeps explicit permanent-del
 
 English · [简体中文](USER_GUIDE.zh-CN.md) · [Back to README](../README.md)
 
-Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 2.0.0, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
+Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 2.0.1, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
 
 Archive Management prefers the Host’s public Modal, Button, Input, menu, Tooltip, and icon components. Search fields follow the built-in plugin inventory’s 36px height, search icon, and focus styles. Ordinary text fields use the public Input. Confirmations use the official heading, description, and action areas. Complex preview and import content use the official modal frame. Older Hosts without these exports use compatible controls. Page headings, descriptions, secondary list text, and focus states follow the official settings typography and theme variables.
 
