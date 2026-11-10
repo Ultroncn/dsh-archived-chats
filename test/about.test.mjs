@@ -147,7 +147,7 @@ test('about exposes package identity, trusted links, and an unchecked initial st
       guideZh: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/docs/USER_GUIDE.zh-CN.md',
       guideEn: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/docs/USER_GUIDE.md',
       changelog: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/CHANGELOG.md',
-      marketplace: 'https://awesome-dsh-plugin.com/p/Ultronen/dsh-archived-chats/',
+      marketplace: 'https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/',
     },
     update: { status: 'unchecked', latestVersion: null, checkedAt: null },
   });
