@@ -4,6 +4,18 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 未发布 / Unreleased
+
+### 中文
+
+- 恢复 2.0.0 之前的宿主兼容范围：声明重新为 DSH `>=0.1.0-rc.7 || 0.2.2-rc.1`，会话依赖声明覆盖 `0.1.7-rc.2` 至 `0.2.2-rc.1` 的已知版本，Cordis 恢复 `^4.0.1`。运行时代码在两个版本间没有变化，原生集成矩阵恢复为四套 fixture × 三个平台；旧宿主用户可以直接升级到最新插件，不必先升级 Harness。
+- 修正插件市场链接：徽章、页脚链接与应用内「关于」入口均指向仓库所有者路径。原链接返回 404。
+
+### English
+
+- Restore the pre-2.0.0 Host compatibility range: the declaration is again DSH `>=0.1.0-rc.7 || 0.2.2-rc.1`, the session peer covers the known `0.1.7-rc.2` through `0.2.2-rc.1` releases, and Cordis returns to `^4.0.1`. Runtime code is unchanged between these versions, and the native matrix returns to four fixtures across three platforms. Older Hosts can now update straight to the latest plugin without upgrading Harness first.
+- Fix plugin market links: the badge, the footer link and the in-app About entry now use the repository owner path. The previous URLs returned 404.
+
 ## 2.0.0 — 2026-11-07
 
 ### 中文

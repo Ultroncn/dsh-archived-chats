@@ -56,6 +56,12 @@
 ```sh
 npm ci
 npm test
+npm ci --prefix test/fixtures/native-host --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs
+npm ci --prefix test/fixtures/native-host-0.2.1 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1
+npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
 npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --include=optional --package-lock=true
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm pack --dry-run --json
@@ -77,7 +83,7 @@ PR 应保持单一目的，并说明用户可见变化、兼容性影响、数�
 
 ## English summary
 
-Use Discussions for questions, Issues for reproducible bugs, and private vulnerability reporting for security problems. Keep pull requests focused, add tests, update both language documents when user behavior changes, and run `npm test`, the mandatory native Host integration command for the pinned `0.2.2-rc.1` fixture, and `npm pack --dry-run --json`. Never commit local plugin data, conversations, attachments, credentials, logs, or temporary files.
+Use Discussions for questions, Issues for reproducible bugs, and private vulnerability reporting for security problems. Keep pull requests focused, add tests, update both language documents when user behavior changes, and run `npm test`, the mandatory native Host integration commands for all four pinned fixtures, and `npm pack --dry-run --json`. Never commit local plugin data, conversations, attachments, credentials, logs, or temporary files.
 
 ### Branch, commit, and pull request naming
 
