@@ -2,7 +2,7 @@
 
 [English](ARCHITECTURE.en.md) · 中文 · [用户指南](USER_GUIDE.zh-CN.md)
 
-本文描述 2.0.0 的接口与行为；原生集成测试覆盖 DSH `0.2.2-rc.1`。版本变更见[更新日志](../CHANGELOG.md)。运行时代码是接口与行为的依据；用户操作说明与本文应保持一致。
+本文描述 2.0.1 的接口与行为；原生集成测试覆盖 DSH `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1`。版本变更见[更新日志](../CHANGELOG.md)。运行时代码是接口与行为的依据；用户操作说明与本文应保持一致。
 
 客户端通过能力探测复用公开 UI primitives。`HostModal` 为复杂业务内容使用官方无头 Modal，普通 `ConfirmDialog` 直接使用 Modal 的标题、说明及 footer；`ControlButton` 与 `ControlInput` 透传 ref、禁用状态和编辑事件。旧 Host 保留 HTML 兼容入口。原生按钮使用独立样式类，避免旧按钮 CSS 覆盖官方尺寸、颜色和悬停。菜单保留筛选定位与滚动约束，预览内容限制在外层弹窗边界内。原生弹窗拥有焦点层，旧文档级焦点陷阱仅在兼容模式注册。带插件归属标记的 portal 计入归档交互范围，避免设置保护被弹窗内点击提前解除。
 
@@ -176,14 +176,20 @@ apply 只接受凭据，不接受调用方增补会话 ID。每条执行前在�
 
 ```sh
 npm test
+npm ci --prefix test/fixtures/native-host --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs
+npm ci --prefix test/fixtures/native-host-0.2.1 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1
+npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
 npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --include=optional --package-lock=true
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm pack --dry-run --json
 git diff --check
 ```
 
-原生集成命令安装版本固定的官方 `0.2.2-rc.1` fixture，要求九个用例全部执行且不能跳过，对应 CI 的强制 Host 集成门禁。
+原生集成命令会分别安装锁定的 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1` fixtures，每套都要求九个原生集成用例全部执行且不能跳过；这是 CI 强制原生 Host 集成门禁的本地等价检查。
 
-最低要求 DSH `0.2.2-rc.1`，声明范围为 `>=0.2.2-rc.1`。发布自动化在 Ubuntu 上运行 Node.js 18 单元测试，并在 Ubuntu、macOS 和 Windows 上使用 Node.js 24 强制执行官方 `0.2.2-rc.1` 后端的九项集成用例与打包检查。[截图](../screenshots.json)使用虚构示例聊天展示当前界面。
+声明的 DSH `>=0.1.0-rc.7 || 0.2.2-rc.1` 范围仍以 Host 公开能力为准。发布自动化在 Ubuntu 上测试 Node.js 18，并在 Ubuntu、macOS 和 Windows 上测试 Node.js 24；Node.js 24 矩阵在三个平台上分别强制运行基于官方 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1` 的四套 Host 后端集成（每套 9/9）与打包检查，覆盖 v4 会话格式。[截图](../screenshots.json)使用虚构示例聊天展示当前界面。
 
 永久删除在最终读取子代理关系前先取消并释放活动代理。完整后代集合以可选 `cascadeSessionIds` 保存到父会话的 `purge-pending` 记录；父目录消失后也保留该记录，直到所有子代理清理完成。用户明确重试时据此恢复级联，不跨越分叉或已有独立删除任务的子树。待重试记录清空前不要降级到不支持此字段的版本。

@@ -39,12 +39,39 @@ jobs:
         include:
           - os: ubuntu-latest
             label: ubuntu
-            fixture: native-host-0.2.2-rc.1
+            fixture: native-host
           - os: macos-latest
             label: macos
-            fixture: native-host-0.2.2-rc.1
+            fixture: native-host
           - os: windows-latest
             label: windows
+            fixture: native-host
+          - os: ubuntu-latest
+            label: ubuntu / DSH 0.2.1
+            fixture: native-host-0.2.1
+          - os: macos-latest
+            label: macos / DSH 0.2.1
+            fixture: native-host-0.2.1
+          - os: windows-latest
+            label: windows / DSH 0.2.1
+            fixture: native-host-0.2.1
+          - os: ubuntu-latest
+            label: ubuntu / DSH 0.2.1-rc.5
+            fixture: native-host-0.2.1-rc.5
+          - os: macos-latest
+            label: macos / DSH 0.2.1-rc.5
+            fixture: native-host-0.2.1-rc.5
+          - os: windows-latest
+            label: windows / DSH 0.2.1-rc.5
+            fixture: native-host-0.2.1-rc.5
+          - os: ubuntu-latest
+            label: ubuntu / DSH 0.2.2-rc.1
+            fixture: native-host-0.2.2-rc.1
+          - os: macos-latest
+            label: macos / DSH 0.2.2-rc.1
+            fixture: native-host-0.2.2-rc.1
+          - os: windows-latest
+            label: windows / DSH 0.2.2-rc.1
             fixture: native-host-0.2.2-rc.1
 
     steps:
@@ -59,7 +86,12 @@ jobs:
 
       - run: npm ci
       - run: npm test
+      - name: Install pinned official Host fixture
+        if: matrix.fixture != 'native-host-0.2.2-rc.1'
+        run: npm ci --prefix test/fixtures/${{ matrix.fixture }} --ignore-scripts --include=optional
+
       - name: Resolve exact DSH 0.2.2-rc.1 fixture dependencies
+        if: matrix.fixture == 'native-host-0.2.2-rc.1'
         run: npm install --prefix test/fixtures/${{ matrix.fixture }} --ignore-scripts --include=optional --package-lock=true
       - name: Run mandatory native Host integration
         run: node scripts/run-native-integration.mjs --fixture-root test/fixtures/${{ matrix.fixture }}
