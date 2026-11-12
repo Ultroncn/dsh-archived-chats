@@ -4,6 +4,24 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 2.0.2 — 2026-11-12
+
+### 中文
+
+- 支持 DeepSeek Harness `0.2.2-rc.2`：宿主兼容声明增加 `0.2.2-rc.2`，开发依赖同步到 `0.2.2-rc.2`；旧宿主仍可直接升级。
+- 菜单与成功提示改走宿主原生组件：操作菜单使用宿主 Menu，成功提示优先使用宿主 Toast；旧版宿主没有 Toast 时自动使用插件原来的提示框。菜单、提示框不再用插件自己的定位样式。
+- 成功提示的外观随宿主走：宿主 Toast 没有手动关闭按钮，悬停不会暂停 4 秒计时，位置为窗口顶部居中；时长仍为 4 秒加 1 秒淡出。
+- 用户指南补充说明：在 DSH ≥ 0.2.2-rc.2 上，归档会话会删除 DSH 为该会话创建的 Git 工作树检出目录（分支与提交保留）。
+- 插件功能与数据处理不变。
+
+### English
+
+- Support DeepSeek Harness `0.2.2-rc.2`: the Host compatibility declaration adds `0.2.2-rc.2` and the development dependency moves to `0.2.2-rc.2`; older Hosts can still update directly.
+- Menus and success notices now use the Host's native components: action menus use the Host Menu and success notices prefer the Host Toast, falling back to the plugin's own toast on older Hosts without it. Menus and notices no longer use the plugin's own positioning styles.
+- Success notices follow the Host Toast appearance: no manual dismiss button, hovering does not pause the 4-second timer, and the position is top-center of the window; the duration is still 4 seconds plus a 1-second fade.
+- The user guide now notes that on DSH ≥ 0.2.2-rc.2, archiving a session removes the checkout directory of a Git worktree DSH itself created for that session (the branch and its commits are preserved).
+- Plugin features and data handling are unchanged.
+
 ## 2.0.1 — 2026-11-10
 
 ### 中文

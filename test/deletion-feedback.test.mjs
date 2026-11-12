@@ -8,7 +8,8 @@ const jsx = (type, props) => ({ type, props });
 vm.runInNewContext(await readFile(new URL('../lib/client.js', import.meta.url), 'utf8'), {
   window: { __ModuleLoader__: { load(value) { definition = value; } } }, Symbol,
 });
-const exports = definition.factory(name => name === 'react/jsx-runtime' ? { jsx, jsxs: jsx } : {});
+const exports = definition.factory(name => name === 'react/jsx-runtime' ? { jsx, jsxs: jsx }
+  : name === 'react' ? { useRef: (value) => ({ current: value }) } : {});
 const { deletionFailureNotice, NoticeBanner } = exports.__test;
 
 test('deletion failure offers an explicit retry using the returned task identities', () => {

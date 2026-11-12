@@ -4,7 +4,7 @@ Current source removes the previous recovery UI and keeps explicit permanent-del
 
 English · [简体中文](USER_GUIDE.zh-CN.md) · [Back to README](../README.md)
 
-Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 2.0.1, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
+Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 2.0.2, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
 
 Archive Management prefers the Host’s public Modal, Button, Input, menu, Tooltip, and icon components. Search fields follow the built-in plugin inventory’s 36px height, search icon, and focus styles. Ordinary text fields use the public Input. Confirmations use the official heading, description, and action areas. Complex preview and import content use the official modal frame. Older Hosts without these exports use compatible controls. Page headings, descriptions, secondary list text, and focus states follow the official settings typography and theme variables.
 
@@ -112,6 +112,8 @@ Deletion requires explicit confirmation and is irreversible after completion. Ar
 - Each target's verified exclusive session directory is removed, including its logs and files within that directory. Corresponding workspace membership, archive records, Host session indexes, plugin tags, notes, and provenance records are also cleared.
 - Transitive subagent descendants are included through recorded parent relationships, even across workspace or archive-state boundaries. Ordinary forks are included only when selected themselves.
 - Workspace directories, project code, Git repositories and worktrees, global shared attachments and caches outside session directories, exported ZIPs, and other independent backups are retained. Files inside a target session directory are removed with that directory.
+
+> **Archiving is not deletion:** on DSH ≥ 0.2.2-rc.2, archiving a session removes the checkout directory of a Git worktree that DSH itself created for that session (the branch and its commits are preserved); worktrees you created yourself outside session directories are unaffected. To keep the local directory, configure the Host to retain worktrees on archive.
 
 To keep content, export the target chats and any subagents you need before deletion. Archive unarchived chats first to make them available for export. Plugin ZIPs exclude attachment binaries and do not automatically include descendant chats. Back up attachments separately.
 

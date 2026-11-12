@@ -126,13 +126,13 @@ test('architecture route inventory parser accepts LF and CRLF documents', () => 
 });
 
 test('package declares the supported Host baseline and its exact development fixture', () => {
-  assert.equal(packageManifest.dsh?.engines?.dsh, '>=0.1.0-rc.7 || 0.2.2-rc.1');
+  assert.equal(packageManifest.dsh?.engines?.dsh, '>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2');
   assert.equal(packageManifest.dependencies?.['@deepseek-ai/dsh-session'], undefined);
   assert.equal(packageManifest.peerDependencies?.['@deepseek-ai/cordis'], '^4.0.1');
-  assert.equal(packageManifest.devDependencies?.['@deepseek-ai/dsh-session'], '0.2.2-rc.1');
+  assert.equal(packageManifest.devDependencies?.['@deepseek-ai/dsh-session'], '0.2.2-rc.2');
   assert.equal(
     packageManifest.peerDependencies?.['@deepseek-ai/dsh-session'],
-    '>=0.1.0-rc.7 <0.1.1-0 || >=0.1.1-rc.1 <0.1.2-0 || >=0.1.2-alpha.1 <0.2.0-0 || 0.1.5-rc.2 || 0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1',
+    '>=0.1.0-rc.7 <0.1.1-0 || >=0.1.1-rc.1 <0.1.2-0 || >=0.1.2-alpha.1 <0.2.0-0 || 0.1.5-rc.2 || 0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1 || 0.2.2-rc.2',
   );
   assert.equal(packageManifest.peerDependenciesMeta?.['@deepseek-ai/dsh-session']?.optional, true);
 });
