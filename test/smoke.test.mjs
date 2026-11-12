@@ -2267,7 +2267,7 @@ console.log('\n[11c] client half — archive insights UI');
 	  assert(new URLSearchParams(uiExportRequest?.options.body).get('sessionIds') === '["session-a","session-b","session-c"]', 'direct backup export submits archive-list order');
   tree = renderSection();
   elements = collectElements(tree);
-	  assert(elements.some((el) => el.props?.className === 'dac-toast' && elementText(el).includes('已开始下载备份')), 'export action announces that the download started');
+	  assert(elements.some((el) => el.type === ToastStub && el.props?.text === '已开始下载备份' && el.props?.tone === 'success'), 'export action announces that the download started through the Host Toast');
 	  globalThis.fetch = savedUiExportFetch;
 	  windowMock.URL = savedUiExportUrl;
 	states[10].value = null;

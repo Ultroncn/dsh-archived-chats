@@ -231,6 +231,54 @@ test('native buttons preserve preview layout, selection cancellation and stop-ac
   assert(api.HostButton({ className: 'dac-btn-primary dac-stop-archive' }).props.className.includes('dac-native-danger'));
 });
 
+test('success notices use the Host Toast and restart it for each new notice', () => {
+  function Toast() {}
+  const refSlots = [];
+  let refIndex = 0;
+  const useRef = (initial) => {
+    const slot = refSlots[refIndex] ?? (refSlots[refIndex] = { current: initial });
+    refIndex += 1;
+    return slot;
+  };
+  const api = client({ Toast }, { useRef });
+  const onDismiss = () => {};
+  const first = { kind: 'ok', text: 'Backup download started' };
+  refIndex = 0;
+  const one = api.NoticeBanner({ t: key => key, notice: first, interaction: {}, top: 24, onDismiss, onViewArchived: () => {} });
+  assert.equal(one.type, Toast);
+  assert.equal(one.props.text, 'Backup download started');
+  assert.equal(one.props.tone, 'success');
+  assert.equal(one.props.holdMs, 4000);
+  assert.equal(one.props.onDone, onDismiss);
+  assert.equal(one.props.actions, undefined);
+  refIndex = 0;
+  const two = api.NoticeBanner({ t: key => key, notice: { kind: 'ok', text: 'Backup download started' }, interaction: {}, top: 24, onDismiss, onViewArchived: () => {} });
+  assert.equal(two.type, Toast);
+  assert.notEqual(two.props.key, one.props.key, 'a repeated identical notice remounts the Host Toast');
+  refIndex = 0;
+  let viewed = 0;
+  const three = api.NoticeBanner({ t: key => key, notice: { kind: 'ok', text: 'Done', action: 'view-archived' }, interaction: {}, top: 24, onDismiss, onViewArchived: () => { viewed += 1; } });
+  assert.equal(three.props.actions[0].label, 'archive.viewArchived');
+  three.props.actions[0].onClick();
+  assert.equal(viewed, 1);
+});
+
+test('success notices keep the plugin toast on older Hosts without Toast', () => {
+  const api = client({}, { useRef: (v) => ({ current: v }) });
+  const onDismiss = () => {};
+  const result = api.NoticeBanner({ t: key => key, notice: { kind: 'ok', text: 'Backup download started' }, interaction: {}, top: 24, onDismiss, onViewArchived: () => {} });
+  assert.equal(result.type, 'div');
+  assert.equal(result.props.className, 'dac-toast');
+  assert.equal(result.props.role, 'status');
+  assert.equal(result.props.style.top, '24px');
+});
+
+test('menus follow the current Host positioning API and carry no dead menu styles', () => {
+  assert(!source.includes('getAnchorRect'), 'portal menus no longer pass the removed rc.1 getAnchorRect prop');
+  assert(!source.includes('dac-action-menu'), 'the unused own-CSS action menu styles are gone');
+  assert.match(source, /portal: true/, 'menus render through the Host portal positioning');
+});
+
 test('native confirmations use official headings and guard dismissal during pending submissions', async () => {
   function Modal() {}
   const api = client({ Modal }, { useRef: current => ({ current }), useEffect() {} });

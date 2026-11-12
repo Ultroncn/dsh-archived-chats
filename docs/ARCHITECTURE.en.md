@@ -2,7 +2,7 @@
 
 English · [中文](ARCHITECTURE.md) · [User guide](USER_GUIDE.md)
 
-This document describes the interfaces and behavior of version 2.0.1. Native integration tests cover DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
+This document describes the interfaces and behavior of version 2.0.2. Native integration tests cover DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
 
 The client capability-detects public UI primitives. `HostModal` uses the official headless Modal for complex business content. Ordinary `ConfirmDialog` uses its heading, description and footer. `ControlButton` and `ControlInput` forward refs, disabled state and editing events. Older Hosts retain HTML fallbacks. Native controls use separate styling classes so legacy button CSS cannot override their sizing, colors or hover states. Menus retain filter placement and scrolling constraints; preview content stays within the outer modal bounds. Native modals own focus layering, with document-level legacy traps registered only in compatibility mode. Plugin-owned portals belong to the archive interaction so clicks inside a dialog cannot prematurely release settings protection.
 
