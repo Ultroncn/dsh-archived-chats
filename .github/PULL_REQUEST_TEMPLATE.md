@@ -1,4 +1,4 @@
-> 提交前务必完整阅读 [贡献指南 / Contributing Guide](https://github.com/Ultronen/dsh-archived-chats/blob/main/CONTRIBUTING.md)。
+> 提交前务必完整阅读 [贡献指南 / Contributing Guide](https://github.com/Ultroncn/dsh-archived-chats/blob/main/CONTRIBUTING.md)。
 >
 > Before submitting, you must read the guide in full.
 

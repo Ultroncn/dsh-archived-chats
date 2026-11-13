@@ -8,8 +8,8 @@
 
 ## 选择正确入口
 
-- 使用问题、安装帮助和开放式想法：前往 [Discussions](https://github.com/Ultronen/dsh-archived-chats/discussions)。
-- 能够复现的插件缺陷：提交 [Bug report](https://github.com/Ultronen/dsh-archived-chats/issues/new/choose)。
+- 使用问题、安装帮助和开放式想法：前往 [Discussions](https://github.com/Ultroncn/dsh-archived-chats/discussions)。
+- 能够复现的插件缺陷：提交 [Bug report](https://github.com/Ultroncn/dsh-archived-chats/issues/new/choose)。
 - 功能建议：使用 Feature request 表单。
 - 安全漏洞：阅读 [SECURITY.md](SECURITY.md)，使用私密漏洞报告，不能公开提交。
 
@@ -24,7 +24,7 @@
 1. **提议：** 使用 Feature request 表单说明用户问题、验收标准、范围边界和数据影响。此时的 `enhancement` 标签只表示建议类型，不表示已经接受。
 2. **可认领：** 维护者在 Issue 中确认范围和验收标准，并添加 `help wanted`。只有获得该确认的需求才面向社区开放实现；`good first issue` 表示任务边界清晰且适合首次贡献。
 3. **认领：** 在带有 `help wanted` 且尚未标记 `claimed` 的 Issue 下明确留言“我想认领”。第一位明确认领的贡献者即可按已确认范围开始开发，维护者随后添加 `claimed` 并移除 `help wanted`。认领时不需要承诺实现方案、测试计划或进展时间。
-4. **进行中：** 外部贡献者先 Fork 本仓库，将 Fork 同步到上游最新 `main`，再在 Fork 中创建单一目的的短期分支。尽早从该分支向 `Ultronen/dsh-archived-chats:main` 提交 Draft PR，并关联原 Issue。这一流程不需要仓库写权限，也不会自动获得协作者权限。如果暂时无法继续，可以在 Issue 中说明或主动释放认领。认领长期没有活动时，维护者会先留言询问；没有回复后可以释放认领并重新添加 `help wanted`。
+4. **进行中：** 外部贡献者先 Fork 本仓库，将 Fork 同步到上游最新 `main`，再在 Fork 中创建单一目的的短期分支。尽早从该分支向 `Ultroncn/dsh-archived-chats:main` 提交 Draft PR，并关联原 Issue。这一流程不需要仓库写权限，也不会自动获得协作者权限。如果暂时无法继续，可以在 Issue 中说明或主动释放认领。认领长期没有活动时，维护者会先留言询问；没有回复后可以释放认领并重新添加 `help wanted`。
 5. **交付：** PR 使用 `Closes #编号`，逐项满足已确认的验收标准、测试、双语文档和安全要求。只有 PR 合并才表示需求完成；维护者可以在评审中缩小范围或要求拆分后续 Issue。
 
 拼写修正、小型文档修正、维护者直接请求的改动可以跳过正式认领。其他用户可见行为、持久化数据、导入恢复、回收站或永久删除相关改动，必须先有 Issue 和维护者确认。
@@ -47,7 +47,7 @@
 - 所有权、社区入口与自动化配置：`.github/CODEOWNERS`、`.github/ISSUE_TEMPLATE/**`、`.github/PULL_REQUEST_TEMPLATE.md` 和 `.github/workflows/**`。
 - 发布与市场资产：包版本号、Tag、GitHub Release、npm 发布、插件市场条目、`screenshots.json`、`assets/brand/**` 和 `assets/screenshots/**`。
 
-贡献者在 Fork 中可以提出任何改动，但只有通过 `@Ultronen` Code Owner 审核并合并的内容才代表项目决定。超出上述边界的外部 PR 会被要求移除越界改动，或直接关闭。
+贡献者在 Fork 中可以提出任何改动，但只有通过 `@Ultroncn` Code Owner 审核并合并的内容才代表项目决定。超出上述边界的外部 PR 会被要求移除越界改动，或直接关闭。
 
 ## 本地开发
 
@@ -103,7 +103,7 @@ Unless the linked Issue contains an explicit written request from the maintainer
 - Ownership, community-entry, and automation configuration: `.github/CODEOWNERS`, `.github/ISSUE_TEMPLATE/**`, `.github/PULL_REQUEST_TEMPLATE.md`, and `.github/workflows/**`.
 - Release and marketplace assets: the package version, tags, GitHub Releases, npm publication, marketplace entries, `screenshots.json`, `assets/brand/**`, and `assets/screenshots/**`.
 
-Contributors can propose any change in their forks, but only content reviewed and merged by the `@Ultronen` Code Owner represents a project decision. An external PR outside these boundaries will be asked to remove the out-of-scope changes or may be closed.
+Contributors can propose any change in their forks, but only content reviewed and merged by the `@Ultroncn` Code Owner represents a project decision. An external PR outside these boundaries will be asked to remove the out-of-scope changes or may be closed.
 
 ### Community proposals and claims
 
@@ -112,7 +112,7 @@ Anyone may propose a feature, but opening an issue starts review; it does not ad
 1. **Proposal:** describe the user problem, observable acceptance criteria, scope boundaries, and data impact. The automatic `enhancement` label classifies the proposal but does not mean it is accepted.
 2. **Ready to claim:** the maintainer confirms the scope and acceptance criteria in writing and adds `help wanted`. Only then is implementation open to community contributors. `good first issue` marks a bounded newcomer-friendly task.
 3. **Claim:** on an Issue labeled `help wanted` and not yet labeled `claimed`, leave a clear comment that you want to claim it. The first contributor to make a clear claim may start work within the confirmed scope; the maintainer then adds `claimed` and removes `help wanted`. Claiming does not require a promised implementation approach, test plan, or progress date.
-4. **In progress:** external contributors first fork the repository, sync the fork with the latest upstream `main`, and create a focused short-lived branch in the fork. Open a linked Draft PR from that branch to `Ultronen/dsh-archived-chats:main` early. This workflow does not require repository write access and does not automatically grant collaborator access. If you cannot continue, comment on the Issue or release the claim. After prolonged inactivity, the maintainer will ask for an update and may release an unanswered claim by restoring `help wanted`.
+4. **In progress:** external contributors first fork the repository, sync the fork with the latest upstream `main`, and create a focused short-lived branch in the fork. Open a linked Draft PR from that branch to `Ultroncn/dsh-archived-chats:main` early. This workflow does not require repository write access and does not automatically grant collaborator access. If you cannot continue, comment on the Issue or release the claim. After prolonged inactivity, the maintainer will ask for an update and may release an unanswered claim by restoring `help wanted`.
 5. **Delivery:** use `Closes #number` and meet the confirmed acceptance criteria, tests, bilingual documentation, and safety requirements. An issue is complete only when its PR is merged; review may narrow the scope or move follow-up work into separate issues.
 
 Typos, small documentation fixes, and changes directly requested by the maintainer may skip formal claiming. Other user-visible behavior and all changes involving persisted data, import or restore, the Recycle Bin, or permanent deletion require an issue and maintainer confirmation first.

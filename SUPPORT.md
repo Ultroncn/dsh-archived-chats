@@ -4,10 +4,10 @@
 
 | 需求 | 入口 |
 | --- | --- |
-| 安装、配置、使用问题 | [GitHub Discussions](https://github.com/Ultronen/dsh-archived-chats/discussions) |
-| 能稳定复现的缺陷 | [Bug report](https://github.com/Ultronen/dsh-archived-chats/issues/new?template=bug_report.yml) |
-| 功能建议 | [Feature request](https://github.com/Ultronen/dsh-archived-chats/issues/new?template=feature_request.yml) |
-| 安全漏洞或潜在数据泄露 | [Private security report](https://github.com/Ultronen/dsh-archived-chats/security/advisories/new) |
+| 安装、配置、使用问题 | [GitHub Discussions](https://github.com/Ultroncn/dsh-archived-chats/discussions) |
+| 能稳定复现的缺陷 | [Bug report](https://github.com/Ultroncn/dsh-archived-chats/issues/new?template=bug_report.yml) |
+| 功能建议 | [Feature request](https://github.com/Ultroncn/dsh-archived-chats/issues/new?template=feature_request.yml) |
+| 安全漏洞或潜在数据泄露 | [Private security report](https://github.com/Ultroncn/dsh-archived-chats/security/advisories/new) |
 
 提交前请先搜索已有 Issue 和 Discussion，并确认问题仍能在最新稳定版本复现。请提供插件版本、DeepSeek Harness 版本、操作系统、最小复现步骤和已经脱敏的诊断信息。
 
@@ -21,7 +21,7 @@
 
 Thank you for using Archive Management.
 
-Use [Discussions](https://github.com/Ultronen/dsh-archived-chats/discussions) for installation and usage questions, the [bug report form](https://github.com/Ultronen/dsh-archived-chats/issues/new?template=bug_report.yml) for reproducible defects, and the [feature request form](https://github.com/Ultronen/dsh-archived-chats/issues/new?template=feature_request.yml) for proposals. Report vulnerabilities and possible data exposure through [private vulnerability reporting](https://github.com/Ultronen/dsh-archived-chats/security/advisories/new).
+Use [Discussions](https://github.com/Ultroncn/dsh-archived-chats/discussions) for installation and usage questions, the [bug report form](https://github.com/Ultroncn/dsh-archived-chats/issues/new?template=bug_report.yml) for reproducible defects, and the [feature request form](https://github.com/Ultroncn/dsh-archived-chats/issues/new?template=feature_request.yml) for proposals. Report vulnerabilities and possible data exposure through [private vulnerability reporting](https://github.com/Ultroncn/dsh-archived-chats/security/advisories/new).
 
 Feature requests enter review; they do not automatically join the roadmap. Once the maintainer confirms the scope and adds `help wanted`, contributors may claim the work through the process in [CONTRIBUTING.md](CONTRIBUTING.md). The maintainer retains final product, merge, and release decisions.
 
