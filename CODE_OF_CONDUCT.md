@@ -38,7 +38,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-For repository-specific incidents that can be described without sensitive details, contact the maintainer by mentioning [@Ultronen](https://github.com/Ultronen) in [Discussions](https://github.com/Ultronen/dsh-archived-chats/discussions). For a private report or platform-wide abuse, use GitHub's [Report abuse form](https://support.github.com/contact/report-abuse). Do not publish personal data or sensitive incident details in an Issue, Discussion, or pull request.
+For repository-specific incidents that can be described without sensitive details, contact the maintainer by mentioning [@Ultroncn](https://github.com/Ultroncn) in [Discussions](https://github.com/Ultroncn/dsh-archived-chats/discussions). For a private report or platform-wide abuse, use GitHub's [Report abuse form](https://support.github.com/contact/report-abuse). Do not publish personal data or sensitive incident details in an Issue, Discussion, or pull request.
 
 All complaints will be reviewed and investigated promptly and fairly. Community leaders are obligated to respect the privacy and security of the reporter of any incident.
 
