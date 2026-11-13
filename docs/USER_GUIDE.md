@@ -201,7 +201,7 @@ Upgrades preserve archives, tags, notes, and pending permanent-deletion tasks. P
 
 Features depend on public Host capabilities, not just a version number:
 
-The declared DSH `>=0.1.0-rc.7 || 0.2.2-rc.1` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all four pinned official Host backends, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1` (nine integration cases each) and package checks, including the v4 session format.
+The declared DSH `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all four pinned official Host backends, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1` (nine integration cases each) and package checks, including the v4 session format.
 
 ## Local data and uninstall
 

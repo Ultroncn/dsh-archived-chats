@@ -201,7 +201,7 @@ JSON 是机器可读记录，Markdown 是可读副本。新版 Host 导出 ZIP v
 
 功能取决于 Host 公开能力，不仅取决于版本号：
 
-声明的 DSH `>=0.1.0-rc.7 || 0.2.2-rc.1` 范围仍表达基于 Host 公开能力的兼容性。发布自动化在 Ubuntu 上测试 Node.js 18，并在 Ubuntu、macOS 和 Windows 上测试 Node.js 24；Node.js 24 矩阵强制运行官方 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1` 四套锁定 Host 后端集成（各 9 项）与打包检查，覆盖 v4 会话格式。
+声明的 DSH `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2` 范围仍表达基于 Host 公开能力的兼容性。发布自动化在 Ubuntu 上测试 Node.js 18，并在 Ubuntu、macOS 和 Windows 上测试 Node.js 24；Node.js 24 矩阵强制运行官方 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1` 四套锁定 Host 后端集成（各 9 项）与打包检查，覆盖 v4 会话格式。
 
 ## 本地数据与卸载
 
