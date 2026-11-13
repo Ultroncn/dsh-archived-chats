@@ -11,7 +11,7 @@
 
 ## 私密报告漏洞
 
-请使用 GitHub 的[私密漏洞报告](https://github.com/Ultronen/dsh-archived-chats/security/advisories/new)。不要在公开 Issue、Discussion、PR 或日志中披露尚未修复的漏洞。
+请使用 GitHub 的[私密漏洞报告](https://github.com/Ultroncn/dsh-archived-chats/security/advisories/new)。不要在公开 Issue、Discussion、PR 或日志中披露尚未修复的漏洞。
 
 报告应尽量包含：
 
@@ -28,6 +28,6 @@
 
 ## Reporting in English
 
-Use [GitHub private vulnerability reporting](https://github.com/Ultronen/dsh-archived-chats/security/advisories/new). Do not disclose an unpatched vulnerability in a public issue, discussion, pull request, or log.
+Use [GitHub private vulnerability reporting](https://github.com/Ultroncn/dsh-archived-chats/security/advisories/new). Do not disclose an unpatched vulnerability in a public issue, discussion, pull request, or log.
 
 Include the plugin and DeepSeek Harness versions, operating system, installation source, minimal reproduction steps, impact, and sanitized diagnostics. Never include real chat content, attachments, credentials, cookies, private keys, full home-directory paths, or other personal data. Please coordinate disclosure with the maintainer before publishing details.
