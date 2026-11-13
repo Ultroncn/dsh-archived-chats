@@ -141,12 +141,12 @@ test('about exposes package identity, trusted links, and an unchecked initial st
     author: 'Ultronen',
     license: 'MIT',
     links: {
-      home: 'https://github.com/Ultronen/dsh-archived-chats',
-      feedback: 'https://github.com/Ultronen/dsh-archived-chats/issues/new/choose',
-      guide: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/docs/USER_GUIDE.zh-CN.md',
-      guideZh: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/docs/USER_GUIDE.zh-CN.md',
-      guideEn: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/docs/USER_GUIDE.md',
-      changelog: 'https://github.com/Ultronen/dsh-archived-chats/blob/main/CHANGELOG.md',
+      home: 'https://github.com/Ultroncn/dsh-archived-chats',
+      feedback: 'https://github.com/Ultroncn/dsh-archived-chats/issues/new/choose',
+      guide: 'https://github.com/Ultroncn/dsh-archived-chats/blob/main/docs/USER_GUIDE.zh-CN.md',
+      guideZh: 'https://github.com/Ultroncn/dsh-archived-chats/blob/main/docs/USER_GUIDE.zh-CN.md',
+      guideEn: 'https://github.com/Ultroncn/dsh-archived-chats/blob/main/docs/USER_GUIDE.md',
+      changelog: 'https://github.com/Ultroncn/dsh-archived-chats/blob/main/CHANGELOG.md',
       marketplace: 'https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/',
     },
     update: { status: 'unchecked', latestVersion: null, checkedAt: null },
@@ -156,7 +156,7 @@ test('about exposes package identity, trusted links, and an unchecked initial st
   const changed = service.about();
   changed.links.home = 'https://untrusted.invalid';
   changed.update.status = 'available';
-  assert.equal(service.about().links.home, 'https://github.com/Ultronen/dsh-archived-chats');
+  assert.equal(service.about().links.home, 'https://github.com/Ultroncn/dsh-archived-chats');
   assert.equal(service.about().update.status, 'unchecked');
 });
 

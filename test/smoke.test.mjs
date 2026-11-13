@@ -3714,7 +3714,7 @@ console.log('\n[11f2b] client half — local About failures are distinct and ret
     let localReads = 0;
     let updateChecks = 0;
     const localInfo = { name: 'dsh-archived-chats', version: '2.7.4', author: 'Ultronen', license: 'MIT',
-      links: { home: 'https://github.com/Ultronen/dsh-archived-chats' },
+      links: { home: 'https://github.com/Ultroncn/dsh-archived-chats' },
       update: { status: 'unavailable', latestVersion: null, checkedAt: null } };
     globalThis.fetch = async (url) => {
       const path = String(url);
