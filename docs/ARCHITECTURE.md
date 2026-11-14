@@ -190,6 +190,6 @@ git diff --check
 
 原生集成命令会分别安装锁定的 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1` fixtures，每套都要求九个原生集成用例全部执行且不能跳过；这是 CI 强制原生 Host 集成门禁的本地等价检查。
 
-声明的 DSH `>=0.1.0-rc.7 || 0.2.2-rc.1` 范围仍以 Host 公开能力为准。发布自动化在 Ubuntu 上测试 Node.js 18，并在 Ubuntu、macOS 和 Windows 上测试 Node.js 24；Node.js 24 矩阵在三个平台上分别强制运行基于官方 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1` 的四套 Host 后端集成（每套 9/9）与打包检查，覆盖 v4 会话格式。[截图](../screenshots.json)使用虚构示例聊天展示当前界面。
+声明的 DSH `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2` 范围仍以 Host 公开能力为准。发布自动化在 Ubuntu 上测试 Node.js 18，并在 Ubuntu、macOS 和 Windows 上测试 Node.js 24；Node.js 24 矩阵在三个平台上分别强制运行基于官方 `@deepseek-ai/dsh-session@0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1` 的四套 Host 后端集成（每套 9/9）与打包检查，覆盖 v4 会话格式。[截图](../screenshots.json)使用虚构示例聊天展示当前界面。
 
 永久删除在最终读取子代理关系前先取消并释放活动代理。完整后代集合以可选 `cascadeSessionIds` 保存到父会话的 `purge-pending` 记录；父目录消失后也保留该记录，直到所有子代理清理完成。用户明确重试时据此恢复级联，不跨越分叉或已有独立删除任务的子树。待重试记录清空前不要降级到不支持此字段的版本。

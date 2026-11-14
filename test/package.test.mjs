@@ -137,6 +137,21 @@ test('package declares the supported Host baseline and its exact development fix
   assert.equal(packageManifest.peerDependenciesMeta?.['@deepseek-ai/dsh-session']?.optional, true);
 });
 
+test('user-facing docs state the same declared Host range as the manifest', () => {
+  const declaredRange = packageManifest.dsh?.engines?.dsh;
+  assert(declaredRange, 'manifest declares no DSH range');
+  for (const path of [
+    'README.md',
+    'README.zh-CN.md',
+    'docs/USER_GUIDE.md',
+    'docs/USER_GUIDE.zh-CN.md',
+    'docs/ARCHITECTURE.en.md',
+    'docs/ARCHITECTURE.md',
+  ]) {
+    assert(read(path).includes(declaredRange), `${path} states a stale declared Host range`);
+  }
+});
+
 test('runtime dependencies stay free of the builtin-slash resolution chain', () => {
   // DSH 0.1.6-alpha.2 routes module resolution through a layer that calls
   // createRequire().resolve.paths() and iterates the result. `readable-stream@4`
