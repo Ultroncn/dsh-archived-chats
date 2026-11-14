@@ -73,6 +73,15 @@ jobs:
           - os: windows-latest
             label: windows / DSH 0.2.2-rc.1
             fixture: native-host-0.2.2-rc.1
+          - os: ubuntu-latest
+            label: ubuntu / DSH 0.2.2-rc.3
+            fixture: native-host-0.2.2-rc.3
+          - os: macos-latest
+            label: macos / DSH 0.2.2-rc.3
+            fixture: native-host-0.2.2-rc.3
+          - os: windows-latest
+            label: windows / DSH 0.2.2-rc.3
+            fixture: native-host-0.2.2-rc.3
 
     steps:
       - uses: actions/checkout@v6

@@ -34,7 +34,7 @@ Archive Management adds conversation search, organization and backups to DeepSee
 - **Portable backups:** export and import JSON + Markdown ZIPs; imports preview before writing and skip existing IDs to avoid overwrites.
 - **Conversation lineage:** read-only Origins & Branches view traces sources, forks and subagent relationships across all workspaces, including archived and unarchived chats.
 
-> This document describes version 2.0.2. Previous recovery features are removed, with explicit retries for permanent-deletion tasks.
+> This document describes version 2.0.3. Previous recovery features are removed, with explicit retries for permanent-deletion tasks.
 
 ## Install and open
 
@@ -93,7 +93,7 @@ Installing an older release can restore its earlier cleanup rules. Before downgr
 
 ## Compatibility
 
-The declared range is DSH `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2`; features still depend on Host capabilities. Native integration tests cover official `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5` and `0.2.2-rc.1` backends; CI runs the Host matrix on macOS, Windows and Linux.
+The declared range is DSH `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3`; features still depend on Host capabilities. Native integration tests cover official `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3` backends; CI runs the Host matrix on macOS, Windows and Linux.
 
 Archive, unarchive and inventory use official capabilities. Permanent deletion coordinates Host session lifecycle and storage locations rather than calling one unified public deletion API. See [compatibility and limits](docs/USER_GUIDE.md#compatibility-and-limits).
 
@@ -156,6 +156,8 @@ npm ci --prefix test/fixtures/native-host-0.2.1-rc.5 --ignore-scripts --include=
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.1-rc.5
 npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --include=optional --package-lock=true
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.3 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.3
 npm pack --dry-run --json
 ```
 
