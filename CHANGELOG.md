@@ -4,6 +4,18 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 2.0.3 — 2026-11-14
+
+### 中文
+
+- 明确支持 DeepSeek Harness `0.2.2-rc.3`：同时更新宿主与 Session peer 兼容声明，保留已有宿主范围，不自动放行未来预发布版本。
+- 新增锁定官方 `0.2.2-rc.3` 后端的原生集成 fixture，并纳入 macOS、Windows、Linux CI；同步中英文兼容说明。运行时代码、归档、备份与删除安全逻辑不变。
+
+### English
+
+- Explicitly support DeepSeek Harness `0.2.2-rc.3` in both the Host and Session peer ranges, preserving older supported Hosts without admitting untested future prereleases.
+- Add a pinned official `0.2.2-rc.3` native backend fixture to macOS, Windows and Linux CI, and synchronize bilingual compatibility documentation. Runtime code, archive/backup behavior and deletion safety are unchanged.
+
 ## 2.0.2 — 2026-11-12
 
 ### 中文
