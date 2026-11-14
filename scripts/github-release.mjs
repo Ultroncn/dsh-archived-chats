@@ -19,6 +19,10 @@ export async function syncRelease({ repository, tag, notes, token, request = fet
     url = `${base}/${release.id}`;
     method = 'PATCH';
   } else if (existing.status === 404) {
+    const tagResponse = await request(`https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, { headers });
+    if (!tagResponse.ok) throw new Error(`tag verification failed: HTTP ${tagResponse.status}`);
+    const remoteTag = await tagResponse.json();
+    if (remoteTag.ref !== `refs/tags/${tag}`) throw new Error('tag identity mismatch');
     body.tag_name = tag;
   } else {
     throw new Error(`release lookup failed: HTTP ${existing.status}`);
