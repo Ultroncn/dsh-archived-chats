@@ -4,6 +4,20 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 2.0.4 — 2026-11-16
+
+### 中文
+
+- 将已合并的作者信息更正发布到 npm：包作者统一为 Ultroncn，同步中英文安装与维护者说明。
+- 发布已合并的更新弹窗复制反馈改进：使用宿主成功提示，旧宿主提供文字反馈；区分包名版本、本地路径和终端命令。
+- 包含已合并的未使用翻译与内部导出清理；宿主兼容范围、归档、备份及删除行为不变。
+
+### English
+
+- Publish the merged author correction to npm: use Ultroncn consistently in package metadata and bilingual installation guidance.
+- Ship the merged update-dialog copy feedback: use the Host success notice with a text fallback, and distinguish the package/version, local path and terminal command.
+- Include merged unused-translation and internal-export cleanup. Host compatibility, archive, backup and deletion behavior are unchanged.
+
 ## 2.0.3 — 2026-11-14
 
 ### 中文
