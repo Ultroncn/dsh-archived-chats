@@ -17,6 +17,9 @@ The plugin supplements archive management; it does not replace DSH's main chat a
 | `about.js` | Local plugin identity, bounded public version checks, in-memory cache |
 | `persistence-compat.js` | Legacy inspect and modern read-handle adaptation; separate title reads |
 | `workspace-bulk-archive.js` | Eligible workspace chats, short-lived confirmation, apply-time checks |
+| `deletion.js`, `deletion-tasks.js` | Permanent-deletion scheduling, durable tasks, explicit retries |
+| `deletion-safety.js` | Exclusive session-directory checks before deletion |
+| `session-filters.js` | Optional schedule-binding filter (schedule status per session) |
 | `export.js`, `import.js`, `restore.js` | ZIP export, bounded import validation, transactional restoration |
 | `metadata.js`, `durable.js` | Tags/notes, serialized atomic writes, durability primitives |
 | `search.js`, `stats.js` | Message projection/search and directory measurements |
