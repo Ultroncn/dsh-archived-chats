@@ -138,7 +138,7 @@ test('about exposes package identity, trusted links, and an unchecked initial st
   assert.deepEqual(service.about(), {
     name: 'dsh-archived-chats',
     version: '1.3.3',
-    author: 'Ultronen',
+    author: 'Ultroncn',
     license: 'MIT',
     links: {
       home: 'https://github.com/Ultroncn/dsh-archived-chats',

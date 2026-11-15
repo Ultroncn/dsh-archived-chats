@@ -59,7 +59,7 @@ test('package and lock root publish one approved identity', () => {
     packageManifest.description,
     '查看、搜索和管理会话归档，支持工作区批量归档、标签备注、ZIP 备份和会话谱系。',
   );
-  assert.equal(packageManifest.author, 'Ultronen');
+  assert.equal(packageManifest.author, 'Ultroncn');
   assert.equal(packageLock.name, packageManifest.name);
   assert.equal(packageLock.version, packageManifest.version);
   assert.equal(packageLock.packages?.['']?.name, packageManifest.name);

@@ -36,7 +36,7 @@
 
 ## 安装与打开
 
-在 DSH 插件市场搜索 `dsh-archived-chats`，核对作者 **Ultronen** 后安装。按宿主提示重启，打开 **设置 → 归档管理**（英文为 Archive Management）。
+在 DSH 插件市场搜索 `dsh-archived-chats`，核对作者 **Ultroncn** 后安装。按宿主提示重启，打开 **设置 → 归档管理**（英文为 Archive Management）。
 
 也可使用命令行。`web` 是示例 profile，请替换为实际运行 DSH 的 profile，更新和卸载也使用同一个：
 

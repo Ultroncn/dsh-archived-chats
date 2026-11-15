@@ -15,7 +15,7 @@
 
 ## 安装与打开
 
-在 DSH 插件市场搜索 `dsh-archived-chats`，核对作者为 **Ultronen** 后点击「安装」。安装完成后按宿主提示重启 DSH，打开 **设置 → 归档管理**。
+在 DSH 插件市场搜索 `dsh-archived-chats`，核对作者为 **Ultroncn** 后点击「安装」。安装完成后按宿主提示重启 DSH，打开 **设置 → 归档管理**。
 
 也可以在运行 DSH 的主机上使用命令行安装。以下以 `web` profile 为例，请替换为实际运行 DSH 的 profile；更新和卸载也使用同一 profile：
 
