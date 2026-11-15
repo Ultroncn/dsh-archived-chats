@@ -3675,12 +3675,76 @@ for (const application of ['restart-required', 'applied']) {
   let tree = render();
   assert(tree.props.hideConfirm === true && elementText(tree).includes('本地开发版'), 'local checkout is labeled and has no install action');
   await collectElements(tree).find(el => el.type === 'button' && elementText(el) === '复制本地路径')?.props.onClick();
-  assert(copied === '/local/development' && elementText(render()).includes('已复制'), 'copy uses the exact local directory and confirms only after clipboard success');
-  fails = true; await collectElements(render()).find(el => el.type === 'button' && elementText(el) === '已复制')?.props.onClick();
+  const toast = collectElements(render()).find(el => el.type === 'native-toast-stub');
+  assert(copied === '/local/development' && toast?.props.text === '复制成功', 'copy uses the exact local directory and confirms with the official Toast after clipboard success');
+  fails = true; await collectElements(render()).find(el => el.type === 'button' && elementText(el) === '复制本地路径')?.props.onClick();
   assert(elementText(render()).includes('复制失败'), 'clipboard rejection gives selectable-text fallback');
-  assert(!elementText(render()).includes('复制更新命令') && !elementText(render()).includes('复制安装信息'), 'local checkout never offers a registry replacement command');
+  assert(!elementText(render()).includes('复制更新命令') && !elementText(render()).includes('复制包名与版本'), 'local checkout never offers a registry replacement command');
   harness.unmount(); Object.assign(moduleTable.react, savedHooks);
   if (savedNavigator) Object.defineProperty(globalThis, 'navigator', savedNavigator); else delete globalThis.navigator;
+}
+
+{
+  const savedHooks = { ...moduleTable.react }, savedNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const copied = [];
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: { writeText: async value => copied.push(value) } } });
+  const t = clientCtx.locale.bind('settings.archived-chats');
+  const about = { version: packageVersion, links: {}, update: { status: 'current', latestVersion: packageVersion },
+    installation: { source: 'registry', environment: 'web', profile: 'web', canInstall: true,
+      packageSpec: `dsh-archived-chats@${packageVersion}`, command: 'verified host update command' } };
+  const harness = createHookHarness(clientExports.__test.UpdateDialog);
+  const render = () => harness.render({ t, about, onClose() {}, onCheck() {}, onInstall() {} });
+  const button = label => collectElements(render()).find(el => el.type === 'button' && elementText(el) === label);
+  let previousToast;
+  for (const [label, value] of [['复制包名与版本', about.installation.packageSpec], ['复制更新命令', about.installation.command]]) {
+    const control = button(label);
+    assert(!!control && collectElements(control).some(el => el.type === 'svg'), `${label} includes a copy icon`);
+    await control?.props.onClick();
+    const toast = collectElements(render()).find(el => el.type === 'native-toast-stub');
+    assert(copied.at(-1) === value && !!button(label), `${label} copies the exact value and keeps its label`);
+    assert(toast?.props.text === '复制成功' && toast.props.tone === 'success' && toast.props.holdMs === 2000,
+      `${label} uses the official short success Toast`);
+    previousToast?.props.onDone();
+    assert(collectElements(render()).some(el => el.type === 'native-toast-stub'), 'finishing an older Toast preserves the latest copy feedback');
+    previousToast = toast;
+  }
+  previousToast?.props.onDone();
+  assert(!collectElements(render()).some(el => el.type === 'native-toast-stub'), 'the official Toast completion dismisses copy feedback');
+  harness.unmount(); Object.assign(moduleTable.react, savedHooks);
+  if (savedNavigator) Object.defineProperty(globalThis, 'navigator', savedNavigator); else delete globalThis.navigator;
+}
+
+{
+  const savedHooks = { ...moduleTable.react }, savedNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const savedTimeout = globalThis.setTimeout, savedClearTimeout = globalThis.clearTimeout;
+  const timers = new Map();
+  let timerId = 0;
+  globalThis.setTimeout = (callback, delay) => { timers.set(++timerId, { callback, delay }); return timerId; };
+  globalThis.clearTimeout = id => timers.delete(id);
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: { writeText: async () => {} } } });
+  const legacy = loadedModule.factory(name => name === '@deepseek-ai/dsh-client-ui-primitives'
+    ? { ...moduleTable[name], Toast: undefined } : moduleTable[name]);
+  const harness = createHookHarness(legacy.__test.UpdateDialog);
+  const t = key => key === 'locale.intl' ? 'en-US' : key;
+  const about = { version: packageVersion, installation: { source: 'registry', packageSpec: `dsh-archived-chats@${packageVersion}` } };
+  const render = () => harness.render({ t, about, onClose() {}, onCheck() {}, onInstall() {} });
+  try {
+    render(); harness.flushEffects();
+    await collectElements(render()).find(el => el.type === 'button' && elementText(el) === 'Copy package and version')?.props.onClick();
+    let tree = render(); harness.flushEffects();
+    assert(collectElements(tree).some(el => el.props?.role === 'status' && elementText(el) === 'Copied'),
+      'older Hosts give localized copy feedback without changing the button label');
+    const timer = [...timers.values()].find(value => value.delay === 2000);
+    assert(!!timer, 'older Host copy feedback schedules a short dismissal');
+    timer?.callback();
+    tree = render(); harness.flushEffects();
+    assert(!collectElements(tree).some(el => el.props?.role === 'status' && elementText(el) === 'Copied') && timers.size === 0,
+      'older Host feedback disappears and cleans up its timer');
+  } finally {
+    harness.unmount(); Object.assign(moduleTable.react, savedHooks);
+    globalThis.setTimeout = savedTimeout; globalThis.clearTimeout = savedClearTimeout;
+    if (savedNavigator) Object.defineProperty(globalThis, 'navigator', savedNavigator); else delete globalThis.navigator;
+  }
 }
 
 console.log('\n[about] retired maintenance is absent');
