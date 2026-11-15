@@ -1,3 +1,5 @@
+[![DSH Insights health](https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg)](https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/)
+
 <p align="center">
   <img src="assets/brand/archive-management-banner.png" alt="归档管理：面向 DeepSeek Harness 的本地优先归档聊天中心" width="100%">
 </p>
