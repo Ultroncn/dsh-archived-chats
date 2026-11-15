@@ -17,7 +17,7 @@ Archive Management prefers the Host’s public Modal, Button, Input, menu, Toolt
 
 ## Install and open
 
-Search for `dsh-archived-chats` in DSH's plugin market, verify the author is **Ultronen**, and choose **Install**. After installation, follow the host's restart instructions. The settings entry is **归档管理** in Chinese; in English it is **Archive Management**.
+Search for `dsh-archived-chats` in DSH's plugin market, verify the author is **Ultroncn**, and choose **Install**. After installation, follow the host's restart instructions. The settings entry is **归档管理** in Chinese; in English it is **Archive Management**.
 
 Alternatively, run this command on the computer running DSH. `web` is an example profile; replace it with the profile that actually runs your DSH instance. Use that same profile for updates and removal:
 

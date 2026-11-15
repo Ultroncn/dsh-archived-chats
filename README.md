@@ -38,7 +38,7 @@ Archive Management adds conversation search, organization and backups to DeepSee
 
 ## Install and open
 
-Find `dsh-archived-chats` in the DSH plugin market, verify author **Ultronen**, and install. Follow the host's restart prompt, then open **Settings → Archive Management** (Chinese: **设置 → 归档管理**).
+Find `dsh-archived-chats` in the DSH plugin market, verify author **Ultroncn**, and install. Follow the host's restart prompt, then open **Settings → Archive Management** (Chinese: **设置 → 归档管理**).
 
 Alternatively, use the CLI. `web` is an example profile; replace it with your running DSH profile and use the same profile for updates and removal:
 
