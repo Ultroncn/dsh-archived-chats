@@ -18,6 +18,8 @@
 | `persistence-compat.js` | 旧版 inspect 与新版只读句柄适配，独立标题读取 |
 | `workspace-bulk-archive.js` | 工作区归档候选、短效确认、执行重检 |
 | `deletion.js`、`deletion-tasks.js` | 永久删除调度、持久化任务与明确重试 |
+| `deletion-safety.js` | 会话目录独占性判定（删除前安全检查） |
+| `session-filters.js` | 可选日程绑定筛选（会话的日程关联状态） |
 | `export.js`、`import.js`、`restore.js` | ZIP 导出、有界导入验证、事务恢复 |
 | `metadata.js`、`durable.js` | 标签备注、串行原子写入与持久化操作 |
 | `search.js`、`stats.js` | 消息投影与搜索、会话目录测量 |
