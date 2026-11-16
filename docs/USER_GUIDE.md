@@ -6,6 +6,8 @@ English · [简体中文](USER_GUIDE.zh-CN.md) · [Back to README](../README.md)
 
 Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 2.0.4, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
 
+The interface has four tabs, Archived, Unarchived, Origins & Branches, and About.
+
 Archive Management prefers the Host’s public Modal, Button, Input, menu, Tooltip, and icon components. Search fields follow the built-in plugin inventory’s 36px height, search icon, and focus styles. Ordinary text fields use the public Input. Confirmations use the official heading, description, and action areas. Complex preview and import content use the official modal frame. Older Hosts without these exports use compatible controls. Page headings, descriptions, secondary list text, and focus states follow the official settings typography and theme variables.
 
 ## Chat states and legacy data
@@ -119,7 +121,7 @@ To keep content, export the target chats and any subagents you need before delet
 
 Every target must be idle. Execution rechecks identities, archive state, workspace membership, and scope. Changed scope requires fresh confirmation. Retries preserve the stored identities and confirmed scope. Historical selected-only tasks retain their original scope.
 
-Deletion failures show an error with Retry, which resumes the confirmed scope. Reopening or refreshing Archive Management also restores the retry prompt for incomplete deletions. Retrying requires a click. The interface has four tabs, Archived, Unarchived, Origins & Branches, and About.
+Deletion failures show an error with Retry, which resumes the confirmed scope. Reopening or refreshing Archive Management also restores the retry prompt for incomplete deletions. Retrying requires a click.
 
 Tasks are stored in `plugin-data/archived-chats/deletion-tasks.json`. Upgrades carry forward committed pending deletions. Previous recovery records and protection snapshots remain on disk without active UI actions.
 

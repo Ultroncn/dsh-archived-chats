@@ -171,11 +171,11 @@ dsh plugin --profile web remove dsh-archived-chats
 
 Removing the package preserves plugin data and does not permanently purge chats. See [local data and uninstall](docs/USER_GUIDE.md#local-data-and-uninstall).
 
-[MIT License](LICENSE)
-
 ## Deletion failures
 
 Failed permanent deletions show an error and retain internal state for incomplete operations. Current functionality removes previous recovery and protection-snapshot actions while carrying forward committed deletion tasks.
 
 
 A chat without a working directory remains in Archived until the official main list can reach it.
+
+[MIT License](LICENSE)

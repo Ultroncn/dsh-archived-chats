@@ -171,11 +171,11 @@ dsh plugin --profile web remove dsh-archived-chats
 
 卸载插件包保留插件数据，不执行永久删除。详见[本地数据与卸载](docs/USER_GUIDE.zh-CN.md#本地数据与卸载)。
 
-[MIT License](LICENSE)
-
 ## 删除失败处理
 
 永久删除失败时显示错误提示，并在后台保留未完成状态。当前版本移除旧恢复与保护快照操作，仅承接已确认的待删除任务。
 
 
 没有工作目录的聊天会留在已归档，取消归档前需确认官方主列表能读取该会话。
+
+[MIT License](LICENSE)
