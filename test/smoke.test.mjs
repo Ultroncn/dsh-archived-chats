@@ -4786,7 +4786,7 @@ console.log('\n[11j] client half — workspace archive final coverage');
   let pageTree = pageHarness.render(pageProps); pageHarness.flushEffects(); await new Promise((resolve) => setTimeout(resolve, 0));
   let pageElements = collectElements(pageHarness.render(pageProps));
   let restoredSettingsFocus = 0;
-  assert(!pageElements.some(element => element.type === 'button' && elementText(element) === t('workspaceArchive.settingsAction')), 'settings removes the standalone bulk archive trigger');
+  assert(!pageElements.some(element => element.type === 'button' && elementText(element) === '批量归档'), 'settings removes the standalone bulk archive trigger');
   const filterOptions = [{ value: 'all', label: 'All', separatorAfter: true }, { value: 'one', label: 'One', separator: true }];
   const filterMenu = clientExports.__test.FilterSelect({ t, value: 'all', onChange() {}, options: filterOptions, ariaLabel: 'Test filter' });
   assert(filterMenu.props.children.filter(el => el.props?.role === 'separator').length === 1, 'adjacent filter group boundaries produce one separator');
