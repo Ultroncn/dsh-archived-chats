@@ -197,7 +197,7 @@ Upgrades preserve archives, tags, notes, and pending permanent-deletion tasks. P
 
 ## Compatibility and limits
 
-- **Settings closes unexpectedly (known Host issue):** On DSH `0.2.1-rc.2`, archiving the current chat while initial setup is incomplete can trigger onboarding and close Settings. Reported upstream in [#10596](https://github.com/deepseek-ai/deepseek-harness/discussions/10596). This does not by itself mean archiving failed; reopen Settings to check. Plugin 1.6.0 does not include a Host fix.
+- **Settings closes unexpectedly (known Host issue):** On DSH `0.2.1-rc.2`, archiving the current chat while initial setup is incomplete can trigger onboarding and close Settings. Reported upstream in [#10596](https://github.com/deepseek-ai/deepseek-harness/discussions/10596). This does not by itself mean archiving failed; reopen Settings to check. The plugin does not include a Host fix.
 
 Features depend on public Host capabilities, not just a version number:
 
