@@ -73,6 +73,29 @@ test('lineage applies official archive status and strips private fields', () => 
   }
 });
 
+/**
+ * Workspace membership comes from Host data: a workspace whose `sessionIds`
+ * is neither an array nor a Set (a stray string, a number) must simply
+ * contribute no sessions, not mis-attach them or break the graph.
+ */
+test('lineage ignores workspaces whose sessionIds are not an array or Set', () => {
+  const graph = projectLineage({
+    headers: [
+      { id: 's-1', createdAt: 1 },
+      { id: 's-2', createdAt: 2 },
+    ],
+    archivedIds: [],
+    workspaces: [
+      { id: 'ws-string', title: 'StringIds', sessionIds: 's-1' },
+      { id: 'ws-number', title: 'NumberIds', sessionIds: 42 },
+      { id: 'ws-ok', title: 'Ok', sessionIds: ['s-2'] },
+    ],
+    titles: new Map(),
+  });
+  assert.deepEqual(graph.roots[0].workspace, { id: null, title: null });
+  assert.deepEqual(graph.roots[1].workspace, { id: 'ws-ok', title: 'Ok' });
+});
+
 test('lineage focus includes archived descendants and ancestors but excludes unrelated siblings', () => {
   const graph = projectLineage({
     headers: [
