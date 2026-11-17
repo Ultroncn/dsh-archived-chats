@@ -100,6 +100,94 @@ test('preview projection preserves tool correlation and verified image descripto
   assert.equal('searchable' in page.messages[0], false);
 });
 
+/**
+ * Host transcripts are untrusted input: a tool result may carry a plain
+ * string instead of blocks, nest blocks of any kind, or hold a value JSON
+ * cannot render (BigInt). Each of those must degrade to readable preview
+ * text instead of failing the whole projection.
+ */
+test('preview projection degrades malformed tool-result content instead of failing', () => {
+  const messages = projectArchivedMessages([
+    {
+      seq: 1,
+      time: 1001,
+      type: 'tool/result',
+      surfaceOp: 'append',
+      data: {
+        turn: 1,
+        step: 1,
+        message: {
+          id: 'tool-1',
+          role: 'user',
+          source: { kind: 'tool', callId: 'call-1' },
+          content: [{ type: 'tool-result', toolCallId: 'call-1', isError: false, content: 'plain string output' }],
+        },
+      },
+    },
+    {
+      seq: 2,
+      time: 1002,
+      type: 'tool/result',
+      surfaceOp: 'append',
+      data: {
+        turn: 1,
+        step: 1,
+        message: {
+          id: 'tool-2',
+          role: 'user',
+          source: { kind: 'tool', callId: 'call-2' },
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call-2',
+            isError: false,
+            content: [
+              { type: 'image' },
+              { type: 'tool-call', name: 'grep', arguments: '{"q":"x"}' },
+              { type: 'tool-result', toolCallId: 'inner', content: [{ type: 'text', text: 'inner done' }] },
+              { type: 'mystery', payload: 1 },
+            ],
+          }],
+        },
+      },
+    },
+    {
+      seq: 3,
+      time: 1003,
+      type: 'user/message',
+      surfaceOp: 'append',
+      data: {
+        id: 'user-1',
+        role: 'user',
+        source: { kind: 'user' },
+        content: ['raw text', null],
+      },
+    },
+    {
+      seq: 4,
+      time: 1004,
+      type: 'user/message',
+      surfaceOp: 'append',
+      data: {
+        id: 'user-2',
+        role: 'user',
+        source: { kind: 'user' },
+        content: [{ type: 'text', text: 10n }],
+      },
+    },
+  ]);
+
+  assert.equal(messages[0].segments[0].text, 'plain string output');
+  assert.equal(
+    messages[1].segments[0].text,
+    'grep\n{"q":"x"}\n\ninner done\n\n{\n  "type": "mystery",\n  "payload": 1\n}',
+  );
+  assert.deepEqual(messages[2].segments.map(({ kind, text }) => ({ kind, text })), [
+    { kind: 'json', text: '"raw text"' },
+    { kind: 'json', text: 'null' },
+  ]);
+  assert.equal(messages[3].segments[0].text, '[object Object]');
+});
+
 test('preview projection bounds native correlation strings and cache accounts for them', async () => {
   const oversized = 'x'.repeat(300_000);
   const messages = projectArchivedMessages([
