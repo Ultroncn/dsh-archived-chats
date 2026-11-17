@@ -425,3 +425,48 @@ test('unavailable ungrouped inventory fails visibly instead of silently omitting
   });
   await assert.rejects(service.listSessions(), /inventory offline/);
 });
+
+test('execution rechecks workspace membership after inspection before archiving', async () => {
+  const item = fixture({ sessionIds: ['cold-a'] });
+  let recheckArmed = false;
+  const service = createWorkspaceBulkArchiveService({ ...item.dependencies,
+    inspectConversation: async () => {
+      if (recheckArmed) item.workspace.sessionIds = [];
+      return { hasConversation: true };
+    },
+  });
+  const prepared = await service.preview('workspace-a', ['cold-a']);
+  recheckArmed = true;
+  const result = await service.execute(prepared.token, prepared.nonce);
+  assert.deepEqual(result.archived, []);
+  assert.deepEqual(result.skipped, [{ id: 'cold-a', reason: 'session-workspace-changed' }]);
+  assert.equal(item.calls.archive.length, 0);
+});
+
+test('execution rechecks archive state after inspection before archiving', async () => {
+  const item = fixture({ sessionIds: ['cold-a'] });
+  let recheckArmed = false;
+  const service = createWorkspaceBulkArchiveService({ ...item.dependencies,
+    inspectConversation: async () => {
+      if (recheckArmed) item.archived.add('cold-a');
+      return { hasConversation: true };
+    },
+  });
+  const prepared = await service.preview('workspace-a', ['cold-a']);
+  recheckArmed = true;
+  const result = await service.execute(prepared.token, prepared.nonce);
+  assert.deepEqual(result.archived, []);
+  assert.deepEqual(result.skipped, [{ id: 'cold-a', reason: 'session-archived' }]);
+  assert.equal(item.calls.archive.length, 0);
+});
+
+test('execution reports an uncommitted archive when the host records no marker', async () => {
+  const item = fixture({ sessionIds: ['cold-a'] });
+  const archiveCalls = [];
+  item.registry.archiveSession = async (id) => { archiveCalls.push(id); };
+  const prepared = await item.service.preview('workspace-a', ['cold-a']);
+  const result = await item.service.execute(prepared.token, prepared.nonce);
+  assert.deepEqual(result.archived, []);
+  assert.deepEqual(result.failed, [{ id: 'cold-a', reason: 'archive-uncommitted' }]);
+  assert.deepEqual(archiveCalls, ['cold-a']);
+});
