@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createForkProvenanceStore, observeOfficialForks, applyForkProvenance } from '../lib/fork-provenance.js';
@@ -259,5 +259,36 @@ test('child identity replacement while awaiting lifecycle lock never acquires th
   await controller.fork({ sessionId: 'parent' });
   assert.deepEqual((await store.load()).entries, []);
   assert.equal(tracking.status(), 'degraded');
+  for (const dispose of disposers.reverse()) dispose();
+});
+
+test('re-recording an identical entry does not rewrite the catalog', async t => {
+  const { store, filePath } = await storeFixture(t);
+  await store.record(entry);
+  const before = await readFile(filePath, 'utf8');
+  await utimes(filePath, new Date('2020-01-01T00:00:00.000Z'), new Date('2020-01-01T00:00:00.000Z'));
+  await store.record(entry);
+  assert.equal(await readFile(filePath, 'utf8'), before);
+  assert.equal((await stat(filePath)).mtimeMs, Date.parse('2020-01-01T00:00:00.000Z'));
+  assert.deepEqual((await store.load()).entries, [entry]);
+});
+
+test('an unconfigurable official fork reports degraded tracking without breaking the call', async t => {
+  const { store } = await storeFixture(t);
+  const original = async () => ({ sessionId: 'child' });
+  const controller = { typertRemote: { namespace: 'session' } };
+  Object.defineProperty(controller, 'fork', { value: original, writable: false, configurable: false, enumerable: true });
+  const warnings = [];
+  const disposers = [];
+  const services = { sessionController: controller, sessions: { get: id => ({ header: id === 'child' ? child : parent }) } };
+  const ctx = { get: key => services[key], on: () => {},
+    effect(callback) { const dispose = callback(); if (typeof dispose === 'function') disposers.push(dispose); },
+    logger: { warn: message => warnings.push(message) } };
+  const tracking = observeOfficialForks({ ctx, store });
+  assert.equal(tracking.status(), 'degraded');
+  assert.equal(warnings.length, 1);
+  assert.equal(controller.fork, original);
+  assert.deepEqual(await controller.fork({ sessionId: 'parent' }), { sessionId: 'child' });
+  assert.deepEqual((await store.load()).entries, []);
   for (const dispose of disposers.reverse()) dispose();
 });
