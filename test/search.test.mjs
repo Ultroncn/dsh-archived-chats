@@ -617,6 +617,49 @@ test('projected-message cache reuses fresh entries and supports invalidation', a
   assert.equal(inspections, 2);
 });
 
+test('projected-message cache clear drops cached entries', async () => {
+  if (typeof searchModule.createProjectedMessageCache !== 'function') return;
+  let inspections = 0;
+  const cache = searchModule.createProjectedMessageCache(async (id) => {
+    inspections += 1;
+    return { events: [userEvent(1, `${id} cached`)] };
+  }, { maxEntries: 2, ttlMs: 30_000 });
+
+  const first = await cache.get('a');
+  const second = await cache.get('a');
+  assert.strictEqual(second, first);
+  assert.equal(inspections, 1);
+
+  cache.clear();
+  const third = await cache.get('a');
+  assert.notStrictEqual(third, first);
+  assert.equal(inspections, 2);
+});
+
+test('projected-message cache clear does not cache in-flight inspections', async () => {
+  if (typeof searchModule.createProjectedMessageCache !== 'function') return;
+  const resolvers = [];
+  let inspections = 0;
+  const cache = searchModule.createProjectedMessageCache((id) => {
+    inspections += 1;
+    return new Promise((resolve) => {
+      resolvers.push(() => resolve({ events: [userEvent(1, `${id} cached`)] }));
+    });
+  }, { maxEntries: 2, ttlMs: 30_000 });
+
+  const pending = cache.get('a');
+  cache.clear();
+  resolvers[0]();
+  const first = await pending;
+  assert.equal(inspections, 1);
+
+  const secondPending = cache.get('a');
+  assert.equal(inspections, 2);
+  resolvers[1]();
+  const second = await secondPending;
+  assert.notStrictEqual(second, first);
+});
+
 test('projected-message cache evicts the least-recently-used entry', async () => {
   if (typeof searchModule.createProjectedMessageCache !== 'function') return;
   const calls = new Map();
