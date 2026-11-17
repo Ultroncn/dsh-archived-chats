@@ -26,6 +26,20 @@ async function fixture(t, ids = ['chat-a']) {
   };
 }
 
+test('exclusive deletion scope rejects a persistence inventory without list or locate', async () => {
+  for (const persistence of [
+    null,
+    undefined,
+    {},
+    { list: async () => [] },
+    { locate: async () => ({ path: '/sessions/chat-a/session.jsonl' }) },
+  ]) {
+    await assert.rejects(resolveExclusiveSessionDirectory(persistence, 'chat-a'), {
+      code: 'session-location-unavailable',
+    });
+  }
+});
+
 test('exclusive deletion scope accepts sibling session directories and missing-original retries', async t => {
   const f = await fixture(t, ['chat-a', 'chat-b']);
   const present = await resolveExclusiveSessionDirectory(f.persistence, 'chat-a');
