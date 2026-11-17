@@ -65,6 +65,38 @@ test('unsupported versions and malformed session entries make the store unavaila
   assert.equal((await store.getMany(['session-a'])).status, 'unavailable');
 });
 
+test('stored entries with invalid shapes or timestamps make the store unavailable', async () => {
+  const { filePath } = await fixture();
+  const store = createMetadataStore({ filePath });
+  const badEntries = [
+    { 'session-a': null },
+    { 'session-a': ['tags'] },
+    { 'session-a': { tags: [], note: '', updatedAt: 'not-a-date' } },
+    { 'session-a': { tags: [], note: '' } },
+  ];
+  for (const sessions of badEntries) {
+    await writeFile(filePath, JSON.stringify({ version: 1, sessions }), 'utf8');
+    assert.equal((await store.getMany(['session-a'])).status, 'unavailable');
+    await assert.rejects(store.set('session-a', { tags: [], note: 'x' }),
+      (error) => error.code === 'metadata-store-unavailable');
+    assert.equal(await readFile(filePath, 'utf8'), JSON.stringify({ version: 1, sessions }));
+  }
+});
+
+test('metadata store remove deletes only the named entries and skips saving when nothing changes', async () => {
+  const { filePath } = await fixture();
+  const store = createMetadataStore({ filePath, now: () => new Date('2026-08-18T12:00:00.000Z') });
+  await store.set('session-a', { tags: ['a'], note: '' });
+  await store.set('session-b', { tags: ['b'], note: '' });
+  await store.remove(['session-a']);
+  assert.deepEqual(Object.keys((await store.getMany(['session-a', 'session-b'])).entries), ['session-b']);
+  assert.deepEqual(Object.keys(JSON.parse(await readFile(filePath, 'utf8')).sessions), ['session-b']);
+
+  const before = await readFile(filePath, 'utf8');
+  await store.remove(['session-a']);
+  assert.equal(await readFile(filePath, 'utf8'), before, 'removing an absent entry does not rewrite the file');
+});
+
 test('concurrent saves serialize without dropping sessions', async () => {
   const { filePath } = await fixture();
   const store = createMetadataStore({ filePath });
