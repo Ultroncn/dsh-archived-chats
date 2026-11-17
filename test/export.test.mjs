@@ -467,3 +467,47 @@ test('export preflight checks import budgets without creating an unconsumed ZIP 
   await assert.rejects(validateExport({ plan, inspect, generatorVersion: '1.4.6', limits: { maxJsonBytes: 1 } }),
     { code: 'export-limit-exceeded', sessionId: 'session-a' });
 });
+
+test('session records reject invalid inherited event boundaries', () => {
+  const item = transcriptItem();
+  const exportedAt = '2026-08-19T12:00:00.000Z';
+  const events = [{ seq: 0, type: 'turn/start' }];
+  for (const inspected of [
+    { meta: { id: 'session-a', isSeeded: true }, events, inheritedEventCount: 2 },
+    { meta: { id: 'session-a', isSeeded: true }, events, inheritedEventCount: -1 },
+    { meta: { id: 'session-a', isSeeded: true }, events, inheritedEventCount: 0.5 },
+    { meta: { id: 'session-a', isSeeded: false }, events, inheritedEventCount: 1 },
+  ]) {
+    assert.throws(() => createSessionRecord(item, inspected, exportedAt),
+      (error) => error?.code === 'export-source-invalid');
+  }
+  // Boundary values that stay valid: the full event range for a seeded
+  // session, and zero for an unseeded one.
+  assert.equal(createSessionRecord(item,
+    { meta: { id: 'session-a', isSeeded: true }, events, inheritedEventCount: 1 }, exportedAt).version, 2);
+  assert.equal(createSessionRecord(item,
+    { meta: { id: 'session-a', isSeeded: false }, events, inheritedEventCount: 0 }, exportedAt).version, 2);
+});
+
+test('transcript labels system-role messages as System', () => {
+  const markdown = renderTranscript(transcriptItem(), [{
+    seq: 0,
+    time: Date.parse('2026-08-19T10:00:00.000Z'),
+    type: 'user/message',
+    surfaceOp: 'append',
+    data: { id: 'system-1', role: 'system', source: { kind: 'system' }, content: [{ type: 'text', text: 'Be helpful' }] },
+  }], '2026-08-19T12:00:00.000Z');
+  assert.match(markdown, /## System - 2026-08-19T10:00:00\.000Z/);
+  assert.match(markdown, /Be helpful/);
+});
+
+test('ZIP creation rejects an empty export plan', async () => {
+  await assert.rejects(
+    createExportZip({
+      plan: { items: [], exportedAt: '2026-08-19T12:00:00.000Z', filename: 'empty.zip' },
+      inspect: async () => ({ meta: { id: 'x' }, events: [] }),
+      generatorVersion: '0.7.0',
+    }),
+    (error) => error instanceof TypeError && error.message === 'export plan must contain at least one session',
+  );
+});
