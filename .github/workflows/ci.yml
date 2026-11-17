@@ -47,14 +47,14 @@ jobs:
             label: windows
             fixture: native-host
           - os: ubuntu-latest
-            label: ubuntu / DSH 0.2.1
-            fixture: native-host-0.2.1
+            label: ubuntu / DSH 0.2.1-rc.2
+            fixture: native-host-0.2.1-rc.2
           - os: macos-latest
-            label: macos / DSH 0.2.1
-            fixture: native-host-0.2.1
+            label: macos / DSH 0.2.1-rc.2
+            fixture: native-host-0.2.1-rc.2
           - os: windows-latest
-            label: windows / DSH 0.2.1
-            fixture: native-host-0.2.1
+            label: windows / DSH 0.2.1-rc.2
+            fixture: native-host-0.2.1-rc.2
           - os: ubuntu-latest
             label: ubuntu / DSH 0.2.1-rc.5
             fixture: native-host-0.2.1-rc.5
