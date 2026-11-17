@@ -172,3 +172,53 @@ test('stats invalidation prevents an older in-flight result from repopulating th
   assert.equal((await service.measure(['session-a'])).sessions['session-a'].sizeBytes, 2);
   assert.equal(calls, 2);
 });
+
+test('stats service degrades invalid measurements to unavailable rows', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dac-stats-invalid-'));
+  const paths = new Map();
+  for (const id of ['bad-number', 'not-ready']) {
+    const directory = join(root, id);
+    await mkdir(directory);
+    paths.set(id, join(directory, 'session.jsonl.zstd'));
+  }
+  const service = createStatsService({
+    persistence: {
+      list: async () => [{ id: 'bad-number' }, { id: 'not-ready' }],
+      locate: (header) => ({ path: paths.get(header.id) }),
+    },
+    measure: async (directory) => (
+      directory.endsWith('bad-number')
+        ? { sizeBytes: Number.NaN, fileCount: 1, status: 'ready' }
+        : { sizeBytes: 10, fileCount: 1, status: 'unavailable' }
+    ),
+  });
+
+  const result = await service.measure(['bad-number', 'not-ready']);
+  assert.deepEqual(result.sessions, {
+    'bad-number': { sizeBytes: null, fileCount: null, status: 'unavailable' },
+    'not-ready': { sizeBytes: null, fileCount: null, status: 'unavailable' },
+  });
+  assert.deepEqual(result.summary, { sessionCount: 2, totalBytes: 0, unavailableCount: 2 });
+});
+
+test('stats service returns unavailable rows when the header index fails', async () => {
+  let calls = 0;
+  const service = createStatsService({
+    persistence: {
+      list: async () => { throw new Error('header index unavailable'); },
+      locate: () => { throw new Error('locate must not run without headers'); },
+    },
+    measure: async () => {
+      calls += 1;
+      return { sizeBytes: 1, fileCount: 1, status: 'ready' };
+    },
+  });
+
+  const result = await service.measure(['session-a', 'session-b']);
+  assert.deepEqual(result.sessions, {
+    'session-a': { sizeBytes: null, fileCount: null, status: 'unavailable' },
+    'session-b': { sizeBytes: null, fileCount: null, status: 'unavailable' },
+  });
+  assert.deepEqual(result.summary, { sessionCount: 2, totalBytes: 0, unavailableCount: 2 });
+  assert.equal(calls, 0);
+});
