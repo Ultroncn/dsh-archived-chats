@@ -67,6 +67,85 @@ test('preserves a legacy inspection surface and its method receiver', async () =
   });
 });
 
+test('refuses non-object snapshots and invalid snapshot counters', async () => {
+  const listings = [
+    ['not-an-object'],
+    [null],
+    [{ header: HEADER, revision: 'rev-1', eventCount: -1 }],
+    [{ header: HEADER, revision: 'rev-1', eventCount: 1.5 }],
+    [{ header: HEADER, revision: 'rev-1', sizeBytes: -2 }],
+    [{ header: HEADER, revision: 'rev-1', sizeBytes: '128' }],
+  ];
+  for (const listing of listings) {
+    const view = resolvePersistenceCompat({
+      async list() { return listing; },
+      async open() { throw new Error('not used'); },
+    });
+    await assert.rejects(view.listSnapshots(), { code: 'persistence-response-invalid' });
+  }
+});
+
+test('refuses persistence without a readable surface or a valid read handle', async () => {
+  for (const raw of [{}, { list: async () => [] }, { open: async () => ({}) }]) {
+    assert.throws(() => resolvePersistenceCompat(raw), { code: 'persistence-read-unsupported' });
+  }
+  for (const handle of [null, {}, { close: async () => {} }]) {
+    const view = resolvePersistenceCompat({
+      async list() { return []; },
+      async open() { return handle; },
+    });
+    await assert.rejects(view.inspect(HEADER.id), { code: 'persistence-response-invalid' });
+  }
+});
+
+test('forwards createWriteHandle to modern persistence after validating the header', async () => {
+  const created = [];
+  const raw = {
+    async list() { return []; },
+    async open() { throw new Error('not used'); },
+    async create(...args) { created.push(args); return { marker: 'write-handle' }; },
+  };
+  const view = resolvePersistenceCompat(raw);
+  assert.equal(typeof view.createWriteHandle, 'function');
+  const handle = await view.createWriteHandle(HEADER, { mode: 'create' });
+  assert.deepEqual(handle, { marker: 'write-handle' });
+  assert.equal(created.length, 1);
+  assert.equal(created[0][0], HEADER);
+  await assert.rejects(view.createWriteHandle({ ...HEADER, version: 1 }, {}),
+    { code: 'persistence-response-invalid' });
+  assert.equal(created.length, 1, 'an invalid header never reaches the backend');
+});
+
+test('title-only reads return the last non-empty session title', async () => {
+  const events = [
+    { seq: 0, type: 'session/title', data: { title: '  ' } },
+    { seq: 1, type: 'session/title', data: { title: 'first' } },
+    { seq: 2, type: 'user/message', data: { text: 'hello' } },
+    { seq: 3, type: 'session/title', data: { title: 'final' } },
+  ];
+  const view = resolvePersistenceCompat({
+    async list() { return []; },
+    async open() {
+      return {
+        header: HEADER, inheritedEventCount: 0,
+        async read() { return { events }; }, async close() {},
+      };
+    },
+  });
+  assert.equal(await view.readTitle(HEADER.id), 'final');
+
+  const noTitle = resolvePersistenceCompat({
+    async list() { return []; },
+    async open() {
+      return {
+        header: HEADER, inheritedEventCount: 0,
+        async read() { return []; }, async close() {},
+      };
+    },
+  });
+  assert.equal(await noTitle.readTitle(HEADER.id), undefined);
+});
+
 test('maps modern snapshots to legacy headers and forwards opaque revisions', async () => {
   const revision = 'backend-owned:revision:42';
   const snapshot = Object.freeze({ header: HEADER, revision, eventCount: 3, sizeBytes: 128 });
