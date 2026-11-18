@@ -9,7 +9,7 @@
 <p><strong>Find past DSH chats, manage archives, and keep ZIP backups.</strong></p>
 <p><code>dsh-archived-chats</code></p>
 
-<p>English · <a href="README.zh-CN.md">简体中文</a></p>
+<p>English · <a href="README.zh-CN.md">简体中文</a> · UI also in Deutsch · Español · Français · 日本語 · Português (Brasil) · Русский</p>
 
 <p><a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT License</a></p>
 

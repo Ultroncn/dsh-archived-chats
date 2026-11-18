@@ -9,7 +9,7 @@
 <p><strong>找回 DSH 历史对话，搜索、管理归档并保存 ZIP 备份。</strong></p>
 <p><code>dsh-archived-chats</code></p>
 
-<p><a href="README.md">English</a> · 简体中文</p>
+<p><a href="README.md">English</a> · 简体中文 · 界面语言：Deutsch · Español · Français · 日本語 · Português (Brasil) · Русский</p>
 
 <p><a href="CHANGELOG.md">更新日志</a> · <a href="LICENSE">MIT 许可证</a></p>
 
