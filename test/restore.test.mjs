@@ -370,6 +370,7 @@ function modernHost(root, { fail = null } = {}) {
         async read() { return { events: stored.events }; },
         async close() { handles.delete(handle); },
       };
+      if (fail === 'bad-handle') delete handle.append;
       handles.add(handle);
       return handle;
     },
@@ -394,6 +395,19 @@ test('modern restore flushes an empty log and releases ownership', async t => {
   assert.deepEqual((await tx.commit()).restored, ['empty']);
   assert.equal(host.handles.size, 0);
   assert.equal(existsSync(host.raw.locate(record.record.source.meta).path), true);
+});
+
+test('modern restore rejects a write handle missing append before writing', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const host = modernHost(f.root, { fail: 'bad-handle' });
+  const record = modernItem('bad-handle');
+  const adapter = createRestoreAdapter({ ...f, persistence: resolvePersistenceCompat(host.raw), tempRoot: f.root });
+  const tx = await adapter.prepare([record]); await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-unsupported' && error.reason === 'write-handle-invalid');
+  assert.equal(host.handles.size, 0);
+  assert.equal(existsSync(join(f.root, 'sessions', record.id)), false);
+  assert.deepEqual(f.registry.archivedSessionIds, ['existing']);
 });
 
 for (const fail of ['second-append', 'flush']) test(`modern restore rolls back owned logs on ${fail} failure`, async t => {
