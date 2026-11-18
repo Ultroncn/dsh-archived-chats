@@ -678,6 +678,46 @@ test('optional projection cache failures degrade restore without rolling data ba
   }
 });
 
+test('restore reports a fold mismatch without polling the cache', async t => {
+  for (const [label, fold] of [
+    ['title differs', { asOfSeq: 0, values: { title: 'Some other title' } }],
+    ['watermark differs', { asOfSeq: 3, values: { title: 'Title mismatched' } }],
+  ]) {
+    await t.test(label, async t => {
+      const record = item('mismatched');
+      record.record.source.events[0].data.title = 'Title mismatched';
+      let cachedReads = 0;
+      const cache = {
+        coldSnapshot: () => fold,
+        cachedSnapshot: () => { cachedReads += 1; return undefined; },
+      };
+      const { result } = await commitWithProjection(t, [record], cache, 15);
+      assert.deepEqual(result.restored, [record.id]);
+      assert.deepEqual(result.warnings, [{
+        id: record.id,
+        reason: 'title-publication-degraded',
+        detail: 'fold-mismatch',
+      }]);
+      assert.equal(cachedReads, 0, 'a mismatched fold is never polled for publication');
+    });
+  }
+});
+
+test('restore reports a cache read failure during title polling', async t => {
+  const record = item('unreadable-cache');
+  const cache = {
+    coldSnapshot: () => ({ asOfSeq: 0, values: { title: 'Title unreadable-cache' } }),
+    cachedSnapshot: () => { throw new Error('cache read down'); },
+  };
+  const { result } = await commitWithProjection(t, [record], cache, 15);
+  assert.deepEqual(result.restored, [record.id]);
+  assert.deepEqual(result.warnings, [{
+    id: record.id,
+    reason: 'title-publication-degraded',
+    detail: 'cache-read-failed',
+  }]);
+});
+
 for (const legacy of [false, true]) test(`cold title publication preserves a fork cut without activating sessions (legacy=${legacy})`, async t => {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
