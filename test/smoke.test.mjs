@@ -1521,6 +1521,23 @@ console.log('\n[11] client half — settings section registration');
     && clientCalls.localeRegister[0].dicts.en['page.title'] === 'Archive Management',
   'English archive management label and page title match the documented settings entry');
   assert(clientCalls.localeRegister[0].dicts.en['tab.deletions'] === undefined, 'English navigation omits internal deletion pages');
+
+console.log('\n[11a] locale dictionaries — all eight host languages share one key set');
+{
+  const dicts = clientCalls.localeRegister[0].dicts;
+  const expectedIntl = { zh: 'zh-CN', en: 'en-US', de: 'de-DE', es: 'es-ES', fr: 'fr-FR', ja: 'ja-JP', pt: 'pt-BR', ru: 'ru-RU' };
+  assert(JSON.stringify(Object.keys(dicts).sort()) === JSON.stringify(Object.keys(expectedIntl).sort()),
+    `all eight host languages are registered (got ${Object.keys(dicts).sort().join(',')})`);
+  assert(Object.keys(dicts.en).length === 230, `en dictionary has 230 keys (got ${Object.keys(dicts.en).length})`);
+  const baseKeys = JSON.stringify(Object.keys(dicts.en).sort());
+  for (const lang of Object.keys(expectedIntl)) {
+    const dict = dicts[lang];
+    assert(dict !== undefined, `${lang} dictionary is registered`);
+    if (dict === undefined) continue;
+    assert(dict['locale.intl'] === expectedIntl[lang], `${lang} locale.intl is ${expectedIntl[lang]}`);
+    assert(JSON.stringify(Object.keys(dict).sort()) === baseKeys, `${lang} dictionary has exactly the en key set`);
+  }
+}
 	  assert(clientCalls.slotRegister.length === 1, `only the settings section registers (got ${clientCalls.slotRegister.length})`);
 	  const settingsRegistration = clientCalls.slotRegister.find((entry) => entry.meta?.name === 'settings.section');
 	  const overlayRegistration = clientCalls.slotRegister.find((entry) => entry.meta?.name === 'shell.overlay');
