@@ -159,7 +159,7 @@ The Unarchived trash button starts permanent deletion. Confirmation names the ch
 
 The scope explanation is behind the help icon beside the chat count. Hover, keyboard focus, or a touch tap reveals it.
 
-Chats appear in compact lists grouped by their actual workspace, with counts and browser-persisted workspace folding. Each row shows its title, archive state, direct source, branch count, creation time and compact session ID, with an action to copy the full ID. Ungrouped chats have their own group. Each chat is listed once; source references are not counted again.
+Chats appear in compact lists grouped by their actual workspace, with counts and browser-persisted workspace folding. Each row shows its title, archive state, direct source, branch count, creation time and compact session ID, with an action to copy the full ID. Ungrouped chats have their own group. Each regular chat is listed once. Subagent records and source references do not add to the list count. Open the parent chat’s **Session lineage** to see its subagents.
 
 Workspace order follows the main sidebar. Chats within each group default to most recently updated first and follow the sidebar's saved order when manual sorting is enabled. Historical records without an update timestamp use their creation time.
 
