@@ -208,6 +208,22 @@ test('a rejected dedicated writer never authorizes removal of an unowned destina
   assert.deepEqual(f.removed, []);
 });
 
+test('a dedicated writer that returns no undo keeps the artifact and reports uncertainty', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  // A writer that returns neither a function nor { undo } grants no rollback
+  // ownership, so the outcome is uncertain and nothing may be removed.
+  f.persistence.restoreSession = async () => ({});
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const record = item('no-undo');
+  const tx = await adapter.prepare([record]); await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-rollback-failed'
+    && error.cause?.message === 'dedicated restore creation outcome is uncertain; destination retained');
+  assert.deepEqual(f.removed, []);
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.registry.archivedSessionIds, ['existing']);
+});
+
 test('metadata failure after a Host write removes the session and detaches its workspace', async () => {
   const f = await fixture();
   let projectionCalls = 0;
