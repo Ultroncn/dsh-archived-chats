@@ -197,6 +197,59 @@ test('commit failure rolls back persistence, metadata, archive state, and stagin
   await rm(f.root, { recursive: true, force: true });
 });
 
+test('rollback reports a registry restore failure instead of hiding it', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  let setStateCalls = 0;
+  f.registry.setState = async (next) => {
+    setStateCalls += 1;
+    if (setStateCalls >= 2) throw new Error('registry restore failed');
+    f.state.archivedSessionIds = next.archivedSessionIds;
+  };
+  f.persistence.restoreSession = async (payload) => {
+    f.writes.push(payload);
+    return {
+      undo: async () => { f.removed.push(payload.id); },
+      finish: async () => { throw new Error('finish failed'); },
+    };
+  };
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  await tx.stage(item('a'));
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-rollback-failed');
+  assert.deepEqual(f.removed, ['a']);
+  assert.equal(f.metadata.has('a'), false);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing', 'a'], 'a failed registry restore leaves the committed archive set in place');
+});
+
+test('rollback reports a metadata restore failure instead of hiding it', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  f.metadata.set('a', { tags: ['old'], note: 'old note' });
+  let setCalls = 0;
+  f.metadataStore.set = async (id, value) => {
+    setCalls += 1;
+    if (setCalls >= 2) throw new Error('metadata restore failed');
+    f.metadata.set(id, { ...value, updatedAt: 'now' });
+    f.writes.push({ metadata: id });
+    return f.metadata.get(id);
+  };
+  f.persistence.restoreSession = async (payload) => {
+    f.writes.push(payload);
+    return {
+      undo: async () => { f.removed.push(payload.id); },
+      finish: async () => { throw new Error('finish failed'); },
+    };
+  };
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  await tx.stage(item('a'));
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-rollback-failed');
+  assert.deepEqual(f.removed, ['a']);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing'], 'the registry restore still runs when metadata restore fails');
+  assert.deepEqual(f.metadata.get('a').tags, ['tag'], 'the unrestored metadata keeps the committed value');
+});
+
 test('a rejected dedicated writer never authorizes removal of an unowned destination', async t => {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
