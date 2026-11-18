@@ -8,6 +8,8 @@ Archive Management provides a place to browse and manage DSH's archived chats, p
 
 The interface has four tabs, Archived, Unarchived, Origins & Branches, and About.
 
+Archive Management follows the DSH interface language. Its tabs and search fields support Simplified Chinese, English, German, Spanish, French, Japanese, Brazilian Portuguese, and Russian. Some messages, such as the deletion scope summary, still use English outside Chinese.
+
 Archive Management prefers the Host’s public Modal, Button, Input, menu, Tooltip, and icon components. Search fields follow the built-in plugin inventory’s 36px height, search icon, and focus styles. Ordinary text fields use the public Input. Confirmations use the official heading, description, and action areas. Complex preview and import content use the official modal frame. Older Hosts without these exports use compatible controls. Page headings, descriptions, secondary list text, and focus states follow the official settings typography and theme variables.
 
 ## Chat states and legacy data
