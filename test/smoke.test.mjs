@@ -1530,12 +1530,17 @@ console.log('\n[11a] locale dictionaries — all eight host languages share one 
     `all eight host languages are registered (got ${Object.keys(dicts).sort().join(',')})`);
   assert(Object.keys(dicts.en).length === 230, `en dictionary has 230 keys (got ${Object.keys(dicts.en).length})`);
   const baseKeys = JSON.stringify(Object.keys(dicts.en).sort());
+  const placeholders = (text) => (text.match(/\{\w+\}/g) ?? []).sort().join(',');
   for (const lang of Object.keys(expectedIntl)) {
     const dict = dicts[lang];
     assert(dict !== undefined, `${lang} dictionary is registered`);
     if (dict === undefined) continue;
     assert(dict['locale.intl'] === expectedIntl[lang], `${lang} locale.intl is ${expectedIntl[lang]}`);
     assert(JSON.stringify(Object.keys(dict).sort()) === baseKeys, `${lang} dictionary has exactly the en key set`);
+    const invalidKeys = Object.entries(dicts.en).filter(([key, source]) =>
+      typeof dict[key] !== 'string' || !dict[key].trim() || placeholders(dict[key]) !== placeholders(source)
+    ).map(([key]) => key);
+    assert(invalidKeys.length === 0, `${lang} translations have text and preserve placeholders (invalid keys: ${invalidKeys.join(', ')})`);
   }
 }
 	  assert(clientCalls.slotRegister.length === 1, `only the settings section registers (got ${clientCalls.slotRegister.length})`);
@@ -5117,13 +5122,16 @@ console.log('\n[13] client half — settings nav icon patch');
   const otherSvg = { dataset: {}, attrs: {}, innerHTML: '<circle cx="12" cy="12" r="3"/>', setAttribute(k, v) { this.attrs[k] = v; } };
   const ownButton = { textContent: '归档管理', querySelector: (sel) => (sel === 'svg' ? gearSvg : null) };
   const otherButton = { textContent: '通用', querySelector: (sel) => (sel === 'svg' ? otherSvg : null) };
-  const englishSvg = { dataset: {}, attrs: {}, innerHTML: '', setAttribute(k, v) { this.attrs[k] = v; } };
-  const englishButton = { textContent: 'Archive Management', querySelector: (sel) => (sel === 'svg' ? englishSvg : null) };
-  mockDialogs = [{ querySelectorAll: (sel) => (sel === 'nav button' ? [ownButton, englishButton, otherButton] : []) }];
+  const localizedButtons = Object.values(clientCalls.localeRegister[0].dicts).map(({ nav }) => {
+    const svg = { dataset: {}, attrs: {}, innerHTML: '', setAttribute(k, v) { this.attrs[k] = v; } };
+    return { textContent: nav, querySelector: (sel) => (sel === 'svg' ? svg : null) };
+  });
+  mockDialogs = [{ querySelectorAll: (sel) => (sel === 'nav button' ? [ownButton, ...localizedButtons, otherButton] : []) }];
   observers[0].cb();
   assert(gearSvg.dataset.dacPatched === '1', 'our nav button icon marked as patched');
-  assert(englishSvg.dataset.dacPatched === '1' && englishSvg.innerHTML === gearSvg.innerHTML,
-    'the renamed English settings entry receives the same archive icon as the Chinese entry');
+  assert(localizedButtons.every(button => button.querySelector('svg').dataset.dacPatched === '1'
+    && button.querySelector('svg').innerHTML === gearSvg.innerHTML),
+    'every localized settings entry receives the same archive icon');
   assert(gearSvg.attrs.viewBox === '0 0 24 24', 'archive icon viewBox applied');
   assert(gearSvg.attrs.width === '16' && gearSvg.attrs.height === '16'
     && gearSvg.attrs['stroke-width'] === '2' && gearSvg.attrs.stroke === 'currentColor',
@@ -5168,15 +5176,11 @@ console.log('\n[13b] client half — nav icon patch degrades safely on an unknow
 
 console.log('\n[13c] client half — locale tables stay complete and unambiguous');
 {
-  const zhStart = clientSource.indexOf('"locale.intl": "zh-CN"');
-  const enStart = clientSource.indexOf('"locale.intl": "en-US"');
-  const regionEnd = clientSource.indexOf('//#endregion', enStart);
-  assert(zhStart > 0 && enStart > zhStart && regionEnd > enStart, 'both locale tables are present');
   const keysOf = (block) => [...block.matchAll(/^\s*"([a-zA-Z0-9_.-]+)":/gm)].map((match) => match[1]);
-  const tables = {
-    zh: keysOf(clientSource.slice(zhStart, enStart)),
-    en: keysOf(clientSource.slice(enStart, regionEnd)),
-  };
+  const definitions = clientSource.matchAll(/^\s*const ([a-z]{2}) = \{\s*("locale\.intl":[\s\S]*?)^\s*\};/gm);
+  const tables = Object.fromEntries([...definitions].map(([, lang, body]) => [lang, keysOf(body)]));
+  assert(Object.keys(tables).sort().join(',') === Object.keys(clientCalls.localeRegister[0].dicts).sort().join(','),
+    'the duplicate-key check covers every registered locale');
   for (const [language, keys] of Object.entries(tables)) {
     // A repeated key silently takes its LAST value, so a new string can be
     // shadowed by an unrelated older one and the UI shows the wrong text.
