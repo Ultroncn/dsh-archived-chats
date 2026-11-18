@@ -855,3 +855,53 @@ test('late tool and reasoning search hits open their projected message page', ()
     assert.equal(page.messages.find(message => message.seq === seq).turn.answerSeq, 307);
   }
 });
+
+/**
+ * Structured payloads from future or unknown block types reach the JSON
+ * projector directly: a circular reference, nesting past the depth budget,
+ * and an array past the item budget must all degrade to readable markers
+ * instead of failing the whole projection, while a just-under-budget array
+ * keeps every item.
+ */
+test('preview projection truncates circular, over-deep, and oversized array payloads instead of failing', () => {
+  const project = (payload) => projectArchivedMessages([{
+    seq: 1,
+    type: 'assistant/message',
+    surfaceOp: 'append',
+    data: {
+      message: {
+        role: 'assistant',
+        source: { kind: 'model' },
+        content: [{ type: 'future', payload }],
+      },
+    },
+  }]);
+  const circular = { a: 1 };
+  circular.self = circular;
+  let deep = { leaf: 'x' };
+  for (let index = 0; index < 40; index += 1) deep = { next: deep };
+  assert.ok(project(circular)[0].segments[0].text.includes('[circular]'));
+  assert.ok(project(deep)[0].segments[0].text.includes('[truncated]'));
+  const oversized = Array.from({ length: 1005 }, (_, index) => ({ index }));
+  assert.ok(project(oversized)[0].segments[0].text.includes('[truncated]'));
+  const bounded = Array.from({ length: 999 }, (_, index) => ({ index }));
+  assert.equal(project(bounded)[0].segments[0].text.includes('[truncated]'), false);
+});
+
+test('preview projection caps projected messages at the configured maximum', () => {
+  const limit = searchModule.PREVIEW_LIMITS.maxProjectedMessages;
+  const events = Array.from({ length: limit + 1 }, (_, index) => ({
+    seq: index + 1,
+    type: 'user/message',
+    surfaceOp: 'append',
+    data: {
+      id: `u${index + 1}`,
+      role: 'user',
+      source: { kind: 'user' },
+      content: [{ type: 'text', text: `hello ${index + 1}` }],
+    },
+  }));
+  const messages = projectArchivedMessages(events);
+  assert.equal(messages.length, limit);
+  assert.equal(messages.at(-1).seq, limit);
+});
