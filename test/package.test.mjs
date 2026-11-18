@@ -137,6 +137,16 @@ test('package declares the supported Host baseline and its exact development fix
   assert.equal(packageManifest.peerDependenciesMeta?.['@deepseek-ai/dsh-session']?.optional, true);
 });
 
+test('package declares the Host range at top-level engines.dsh', () => {
+  // The Host compatibility check reads top-level `engines.dsh` (DSH
+  // v0.2.1-alpha.3 upgrade guide: plugin-engines-dsh); the nested
+  // `dsh.engines.dsh` range is ignored and only the peerDependencies
+  // fallback keeps the package accepted.
+  assert.equal(typeof packageManifest.engines?.dsh, 'string', 'top-level engines.dsh must be declared');
+  assert.equal(packageManifest.engines.dsh, packageManifest.dsh?.engines?.dsh, 'top-level engines.dsh must match the nested range');
+  assert(!packageManifest.engines.dsh.includes('workspace:'), 'engines.dsh must not contain workspace: values');
+});
+
 test('user-facing docs state the same declared Host range as the manifest', () => {
   const declaredRange = packageManifest.dsh?.engines?.dsh;
   assert(declaredRange, 'manifest declares no DSH range');
