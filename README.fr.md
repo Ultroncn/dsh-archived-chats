@@ -34,7 +34,7 @@ La gestion des archives permet de rechercher, d’organiser et de sauvegarder le
 - **Sauvegardes ZIP.** Exportez et importez des archives ZIP contenant du JSON et du Markdown. Un aperçu précède l’import et les identifiants déjà présents sont ignorés pour préserver les conversations existantes.
 - **Origines et branches.** La vue **Origins & Branches**, en lecture seule, retrace les conversations sources, les branches et les liens avec les sous-agents dans tous les espaces de travail, quel que soit le statut d’archivage.
 
-> Ce document décrit la version 2.0.5. Les anciennes fonctions de récupération ont été supprimées. Vous pouvez relancer explicitement une tâche de suppression définitive qui a échoué.
+> Ce document décrit la version 2.0.6. Les anciennes fonctions de récupération ont été supprimées. Vous pouvez relancer explicitement une tâche de suppression définitive qui a échoué.
 
 ## Installer et ouvrir
 

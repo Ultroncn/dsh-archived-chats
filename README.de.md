@@ -34,7 +34,7 @@ Mit der Archivverwaltung können Sie Unterhaltungen in DeepSeek Harness durchsuc
 - **ZIP-Sicherungen.** Exportieren und importieren Sie Chats als ZIP mit JSON und Markdown. Vor dem Import sehen Sie eine Vorschau. Bereits vorhandene IDs werden übersprungen, damit bestehende Einträge erhalten bleiben.
 - **Herkunft und Verzweigungen.** Die schreibgeschützte Ansicht **Origins & Branches** zeigt Quellchats, Abzweigungen und Subagenten über alle Arbeitsbereiche und Archivstatus hinweg.
 
-> Diese Anleitung beschreibt Version 2.0.5. Die früheren Wiederherstellungsfunktionen wurden entfernt. Fehlgeschlagene Aufgaben zum endgültigen Löschen lassen sich gezielt wiederholen.
+> Diese Anleitung beschreibt Version 2.0.6. Die früheren Wiederherstellungsfunktionen wurden entfernt. Fehlgeschlagene Aufgaben zum endgültigen Löschen lassen sich gezielt wiederholen.
 
 ## Installieren und öffnen
 
