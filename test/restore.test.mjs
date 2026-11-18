@@ -588,6 +588,21 @@ test('modern restore rejects same-count event or immutable header mutation befor
   }
 });
 
+test('modern handle writer rejects a non-seeded inherited cut instead of flattening the fork', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const host = modernHost(f.root);
+  const record = modernItem('flat-fork', 2);
+  record.record.source.inheritedEventCount = 1;
+  const adapter = createRestoreAdapter({ ...f, persistence: resolvePersistenceCompat(host.raw), tempRoot: f.root });
+  const tx = await adapter.prepare([record]);
+  await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-unsupported' && error.reason === 'inherited-boundary-missing');
+  assert.equal(existsSync(join(f.root, 'sessions', record.id)), false, 'no session directory is created');
+  assert.deepEqual(f.registry.archivedSessionIds, ['existing']);
+  assert.deepEqual(f.writes, []);
+});
+
 async function commitWithProjection(t, records, projectionCache, titlePublicationTimeoutMs = 40) {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
