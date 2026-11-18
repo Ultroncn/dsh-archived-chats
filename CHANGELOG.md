@@ -4,6 +4,18 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 2.0.6 — 2026-11-19
+
+### 中文
+
+- 修复「来源与分支」列表将子智能体记录计为独立会话的问题。列表与工作区计数只包含普通会话，不会为只有子智能体的记录生成「未分组」。
+- 主会话的「会话谱系」仍显示所有子智能体及普通分支，真正未分组的普通会话也仍可在列表查看。
+
+### English
+
+- Fix Origins & Branches counting subagent records as standalone chats. The workspace list and counts include regular chats only, and subagent records no longer create their own Ungrouped section.
+- The parent chat’s lineage still shows all subagent records and ordinary branches. Regular chats without a workspace remain visible in the list.
+
 ## 2.0.5 — 2026-11-19
 
 ### 中文
