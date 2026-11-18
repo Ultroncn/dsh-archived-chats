@@ -3661,13 +3661,30 @@ console.log('\n[11f] client half — recycle navigation and management');
       'large workspace lists show all chats without node-level folding');
     largeRelationshipsHarness.unmount();
 
+    const familyWorkspace = { id: 'ws-family', title: 'Family workspace' };
+    const workerNodes = Array.from({ length: 7 }, (_, index) => ({
+      id: `family-child-${index}`, title: `Family child ${index}`, parentSession: 'family-a',
+      status: index === 0 ? 'archived' : 'active', origin: 'subagent', workspace: { id: null, title: null }, children: [],
+    }));
+    const familyRoot = { id: 'family-a', title: 'Family A', status: 'active',
+      workspace: familyWorkspace, children: workerNodes };
+    const { groupLineageWorkspaces } = clientExports.__test;
+    const familyGroups = groupLineageWorkspaces([familyRoot], [familyWorkspace]);
+    assert(familyGroups.length === 1 && familyGroups[0].key === familyWorkspace.id && familyGroups[0].count === 1,
+      'a parent with seven unassigned subagents produces one list group and one chat');
+    const fork = { id: 'worker-fork', title: 'Ordinary fork', parentSession: workerNodes[0].id,
+      status: 'active', workspace: { id: null, title: null }, children: [] };
+    const forkGroups = groupLineageWorkspaces([{ ...familyRoot,
+      children: [{ ...workerNodes[0], children: [fork] }] }], [familyWorkspace]);
+    const forkGroup = forkGroups.find(group => group.key === 'ungrouped');
+    const forkSource = forkGroup?.roots[0]?.children[0];
+    assert(forkGroup?.count === 1 && forkSource?.contextOnly === true && forkSource.children[0]?.id === fork.id,
+      'a real ungrouped fork remains listed with its subagent source as context');
     lineagePayload = { roots: [
-      { id: 'family-a', title: 'Family A', status: 'archived', children: [
-        { id: 'family-child', title: 'Family child', status: 'active', origin: 'subagent', children: [] },
-      ] },
+      familyRoot,
       { id: 'independent', title: 'Independent', status: 'archived', children: [] },
       { id: 'session-inherited-history-without-parent-1234567890', title: 'Inherited chat', createdAt: 1700000000000, status: 'archived', isSeeded: true, parentSession: null, children: [] },
-    ], diagnostics: [], nodeCount: 4 };
+    ], diagnostics: [], nodeCount: 10 };
     const familyHarness = createHookHarness(RelationshipsPanel);
     familyHarness.render({ t }); familyHarness.flushEffects();
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -3699,17 +3716,18 @@ console.log('\n[11f] client half — recycle navigation and management');
       if (savedNavigator === undefined) delete globalThis.navigator;
       else Object.defineProperty(globalThis, 'navigator', savedNavigator);
     }
-    assert(elementText(familyTree).includes('子智能体来源：Family A'),
-      'the outer list distinguishes delegated subagents from ordinary forks');
-    assert(familyElements.filter(element => element.props?.className?.includes('dac-lineage-open-graph')).length === 2
+    assert(familyElements.filter(element => element.props?.role === 'listitem').length === 3
+      && elementText(familyTree).includes('共 3 个会话') && !elementText(familyTree).includes('Family child'),
+      'the relationship list counts normal chats and preserves truly ungrouped chats');
+    assert(familyElements.filter(element => element.props?.className?.includes('dac-lineage-open-graph')).length === 1
       && elementText(familyTree).includes('独立会话'),
-      'independent chats have no empty relationship action while both related chats do');
+      'only the parent shows the graph action when workers are the only related records');
     familyElements.find(element => element.props?.className?.includes('dac-lineage-open-graph')).props.onClick();
     familyTree = familyHarness.render({ t });
     const familyGraph = findComponentElement(familyTree, 'LineageCanvas');
     assert(familyGraph.props.nodes.length === 1 && familyGraph.props.nodes[0].id === 'family-a'
-      && !elementText(familyGraph).includes('Independent'),
-      'the relationship dialog excludes unrelated chats in the same workspace');
+      && familyGraph.props.nodes[0].children.length === 7 && !elementText(familyGraph).includes('Independent'),
+      'the relationship dialog retains all seven subagents and excludes independent chats');
     familyHarness.unmount();
   }
 
