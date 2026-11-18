@@ -9,21 +9,16 @@
 <p><strong>DSH の過去の会話を検索し、アーカイブを管理して ZIP バックアップを保存できます。</strong></p>
 <p><code>dsh-archived-chats</code></p>
 
-<p><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <strong>日本語</strong> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
+<p><a href="README.md">简体中文</a> · <a href="README.en.md">English</a> · <strong>日本語</strong> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
 
 <p><a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT License</a></p>
 
 <p>
-  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat-square"></a>
-  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm total downloads" src="https://img.shields.io/npm/dt/dsh-archived-chats?style=flat-square&amp;label=total%20downloads"></a>
-  <a href="README.md#install-and-open"><img alt="DSH supported to 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-supported%20to%200.2.2--rc.3-2563eb?style=flat-square"></a>
-  <a href="https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Ultroncn/dsh-archived-chats/ci.yml?branch=main&amp;style=flat-square&amp;label=CI"></a>
-  <a href="https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml"><img alt="Node.js 18 and 24" src="https://img.shields.io/badge/Node.js-18%20%7C%2024-339933?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white"></a>
-</p>
-<p>
-  <a href="https://github.com/Ultroncn/dsh-archived-chats/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat-square"></a>
-  <a href="https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/"><img alt="Awesome DSH Plugin" src="https://awesome-dsh-plugin.com/badge.svg"></a>
-  <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights health" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
+  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm バージョン" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=npm%20%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3"></a>
+  <a href="#%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%81%AE%E5%A4%89%E6%9B%B4%E3%81%A8%E4%BA%92%E6%8F%9B%E6%80%A7"><img alt="DSH 対応上限 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-%E5%AF%BE%E5%BF%9C%E4%B8%8A%E9%99%90%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm ダウンロード数" src="https://img.shields.io/npm/dt/dsh-archived-chats?style=flat&amp;label=npm%20%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89%E6%95%B0"></a>
+  <a href="LICENSE"><img alt="ライセンス · MIT" src="https://img.shields.io/badge/%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9-MIT-2ea44f?style=flat"></a>
+  <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
 </p>
 
 <p><a href="https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/">Plugin market</a> · <a href="https://www.npmjs.com/package/dsh-archived-chats">npm</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/releases">Releases</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/discussions">Discussions</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/security/advisories/new">Private security report</a></p>
@@ -147,4 +142,4 @@ dsh plugin --profile web remove dsh-archived-chats
 
 質問と提案は [GitHub Discussions](https://github.com/Ultroncn/dsh-archived-chats/discussions) に投稿してください。不具合報告にはプラグインと DSH のバージョン、最小限の再現手順、機密情報を除いたエラーを添えてください。セキュリティ上の問題は[非公開で報告](SECURITY.md)してください。
 
-開発時のコマンドは[英語版 README の開発と検証](README.md#development-and-validation)に掲載しています。ネイティブ統合テストは隔離された一時データを使います。各フィクスチャで 9 件すべてのテストをスキップせずに実行してください。
+開発時のコマンドは[英語版 README の開発と検証](README.en.md#development-and-validation)に掲載しています。ネイティブ統合テストは隔離された一時データを使います。各フィクスチャで 9 件すべてのテストをスキップせずに実行してください。

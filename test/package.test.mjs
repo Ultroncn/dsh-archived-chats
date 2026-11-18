@@ -68,12 +68,12 @@ test('package and lock root publish one approved identity', () => {
 
 test('each public overview states its own destructive and backup boundaries', () => {
   const expected = new Map([
-    ['README.md', [
+    ['README.en.md', [
       'Deletion failures',
       'Successful exports are validated against the same format and budgets as import before the download starts.',
       'A chat without a working directory remains in Archived',
     ]],
-    ['README.zh-CN.md', [
+    ['README.md', [
       '删除失败',
       '导出成功前会按导入使用的同一格式和预算完成验证。',
       '没有工作目录的聊天会留在已归档',
@@ -151,8 +151,8 @@ test('user-facing docs state the same declared Host range as the manifest', () =
   const declaredRange = packageManifest.dsh?.engines?.dsh;
   assert(declaredRange, 'manifest declares no DSH range');
   for (const path of [
+    'README.en.md',
     'README.md',
-    'README.zh-CN.md',
     'docs/USER_GUIDE.md',
     'docs/USER_GUIDE.zh-CN.md',
     'docs/ARCHITECTURE.en.md',
