@@ -1273,11 +1273,17 @@ const clientServices = {
     refresh: async () => { clientCalls.workspaceRefresh += 1; },
   },
 };
+let activeClientLanguage = 'zh';
+function translateClient(dict, key, params = {}) {
+  return (dict?.[key] ?? key).replace(/\{(\w+)\}/g, (token, name) =>
+    Object.hasOwn(params, name) ? String(params[name]) : token);
+}
 const clientCtx = {
   get: (key) => clientServices[key],
   locale: {
     register: (ns, dicts) => { clientCalls.localeRegister.push({ ns, dicts }); return () => {}; },
-    bind: (ns) => (key) => clientCalls.localeRegister.find((r) => r.ns === ns)?.dicts?.zh?.[key] ?? key,
+    bind: (ns) => (key, params) => translateClient(
+      clientCalls.localeRegister.find((r) => r.ns === ns)?.dicts?.[activeClientLanguage], key, params),
   },
   slots: {
     inject: (name, cb) => cb(),
@@ -1528,7 +1534,7 @@ console.log('\n[11a] locale dictionaries — all eight host languages share one 
   const expectedIntl = { zh: 'zh-CN', en: 'en-US', de: 'de-DE', es: 'es-ES', fr: 'fr-FR', ja: 'ja-JP', pt: 'pt-BR', ru: 'ru-RU' };
   assert(JSON.stringify(Object.keys(dicts).sort()) === JSON.stringify(Object.keys(expectedIntl).sort()),
     `all eight host languages are registered (got ${Object.keys(dicts).sort().join(',')})`);
-  assert(Object.keys(dicts.en).length === 230, `en dictionary has 230 keys (got ${Object.keys(dicts.en).length})`);
+  assert(Object.keys(dicts.en).length === 400, `en dictionary has 400 keys (got ${Object.keys(dicts.en).length})`);
   const baseKeys = JSON.stringify(Object.keys(dicts.en).sort());
   const placeholders = (text) => (text.match(/\{\w+\}/g) ?? []).sort().join(',');
   for (const lang of Object.keys(expectedIntl)) {
@@ -2328,7 +2334,7 @@ console.log('\n[11c] client half — archive insights UI');
   elements = collectElements(tree);
   const importDialog = elements.find((el) => el.props?.role === 'dialog' && el.props?.['aria-labelledby'] === 'dac-import-title');
   assert(importDialog !== undefined, 'import preview opens an accessible dialog');
-  assert(elementText(importDialog).includes('dsh-archived-chats v0.8.0 · format v1'), 'import preview renders generator and format versions');
+  assert(elementText(importDialog).includes('dsh-archived-chats v0.8.0 · 格式 v1'), 'import preview renders generator and format versions');
   assert(elementText(importDialog).includes('项目不存在，将保持未分组'), 'import preview renders workspace warnings');
   const importCheckboxes = collectElements(importDialog).filter((el) => el.type === 'input' && el.props?.type === 'checkbox');
   assert(importCheckboxes.some((checkbox) => checkbox.props.disabled === true && checkbox.props.checked === false), 'conflicting import rows are disabled and unselected');
@@ -3747,7 +3753,7 @@ for (const application of ['restart-required', 'applied']) {
   const legacy = loadedModule.factory(name => name === '@deepseek-ai/dsh-client-ui-primitives'
     ? { ...moduleTable[name], Toast: undefined } : moduleTable[name]);
   const harness = createHookHarness(legacy.__test.UpdateDialog);
-  const t = key => key === 'locale.intl' ? 'en-US' : key;
+  const t = (key, params) => translateClient(clientCalls.localeRegister[0].dicts.en, key, params);
   const about = { version: packageVersion, installation: { source: 'registry', packageSpec: `dsh-archived-chats@${packageVersion}` } };
   const render = () => harness.render({ t, about, onClose() {}, onCheck() {}, onInstall() {} });
   try {
@@ -4355,7 +4361,7 @@ console.log('\n[11h] client half — workspace bulk archive dialog');
       sessions: [{ id: 'localized-chat' }], skipped: [],
     }) });
     const localizedHarness = createHookHarness(Dialog);
-    const localizedProps = { ...props, t: key => dictionaries[language][key] ?? key,
+    const localizedProps = { ...props, t: (key, params) => translateClient(dictionaries[language], key, params),
       workspaceId: 'localized-workspace', workspaceTitle: title };
     localizedHarness.render(localizedProps);
     localizedHarness.flushEffects();
@@ -5656,6 +5662,27 @@ console.log('\n[selection] exact archived selections and cancellation');
   const allCheck = () => elements().find(el => el.type === 'input' && el.props['aria-label'] === '全选当前结果');
   const toolbar = () => elements().find(el => el.props?.className === 'dac-selectionbar');
   render(); harness.flushEffects(); await new Promise(resolve => setTimeout(resolve, 0));
+  try {
+    activeClientLanguage = 'ja';
+    assert(clientCalls.slotRegister[0].meta.label() === 'アーカイブ管理',
+      'the existing settings menu entry follows a Host language change');
+    assert(elementText(render()).includes('アーカイブ済み') && elementText(render()).includes(rows[0].title),
+      'live language switching localizes the tab without translating archived chat titles');
+    const japaneseSelect = button('選択');
+    assert(japaneseSelect !== undefined, 'Japanese uses a localized selection button');
+    if (japaneseSelect) {
+      japaneseSelect.props.onClick();
+      rowCheck('select-a')?.props.onChange({ target: { checked: true } });
+      button(props.t('export.selected'))?.props.onClick();
+      const japaneseDialog = findComponentElement(render(), 'ConfirmDialog');
+      assert(String(japaneseDialog?.props.body).includes('ZIP バックアップ'),
+        'Japanese export confirmation preserves the ZIP backup wording');
+      japaneseDialog?.props.onCancel();
+      button(props.t('confirm.cancel'))?.props.onClick();
+    }
+  } finally {
+    activeClientLanguage = 'zh';
+  }
   const select = button('选择');
   assert(select !== undefined, 'Archived provides an explicit selection-mode entry');
   if (select) {
@@ -5911,7 +5938,7 @@ console.log('\n[search] distinct candidate, content-hit, displayed-chat and fail
   const ok = body => ({ ok: true, status: 200, json: async () => body });
   for (const language of ['zh', 'en']) {
     const dict = clientCalls.localeRegister[0].dicts[language];
-    const t = key => dict[key] ?? key;
+    const t = (key, params) => translateClient(dict, key, params);
     let unreadable = true;
     globalThis.fetch = async (url, options = {}) => {
       const path = String(url);
