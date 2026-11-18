@@ -4,6 +4,20 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 2.0.5 — 2026-11-19
+
+### 中文
+
+- 只读预览按轮次呈现思考、工具调用、模型重试和运行状态。处理摘要默认折叠，展示实际活动、耗时和重试次数，失败原因与错误码单独显示。
+- 兼容新旧工具结果记录。长输出可按需展开，搜索命中时定位对应内容。
+- 归档菜单和界面跟随 DeepSeek Harness 切换八种语言。README 默认展示中文，并提供其他七种语言的入口。
+
+### English
+
+- Group reasoning, tool calls, model retries, and run state by turn in the read-only preview. The processing summary starts collapsed and shows activity, elapsed time, and retry count. Failures display their reason and code separately.
+- Support old and new tool-result records, with expandable output and navigation to matched search results.
+- Follow the DeepSeek Harness language setting across the archive menu and interface. The README opens in Chinese and links to the other seven languages.
+
 ## 2.0.4 — 2026-11-16
 
 ### 中文

@@ -34,7 +34,7 @@ O Archive Management adiciona ao DeepSeek Harness ferramentas para buscar, organ
 - **Backups portáteis.** Exporte e importe arquivos ZIP com JSON e Markdown. A importação exibe uma prévia antes de gravar os dados e pula os IDs que já existem para evitar sobrescritas.
 - **Origem e ramificações das conversas.** A visualização somente para leitura **Origins & Branches** mostra origens, ramificações e vínculos com subagentes em todos os espaços de trabalho, tanto para conversas arquivadas quanto para não arquivadas.
 
-> Este guia se refere à versão 2.0.4. Essa versão remove os recursos anteriores de recuperação e permite repetir explicitamente as tarefas de exclusão permanente.
+> Este guia se refere à versão 2.0.5. Essa versão remove os recursos anteriores de recuperação e permite repetir explicitamente as tarefas de exclusão permanente.
 
 ## Instalação
 
