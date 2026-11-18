@@ -493,9 +493,18 @@ test('transcript labels system-role messages as System', () => {
   const markdown = renderTranscript(transcriptItem(), [{
     seq: 0,
     time: Date.parse('2026-08-19T10:00:00.000Z'),
-    type: 'user/message',
+    type: 'system/message',
     surfaceOp: 'append',
-    data: { id: 'system-1', role: 'system', source: { kind: 'system' }, content: [{ type: 'text', text: 'Be helpful' }] },
+    data: {
+      turn: 1,
+      step: 1,
+      message: {
+        id: 'system-1',
+        role: 'system',
+        source: { kind: 'system-prompt' },
+        content: [{ type: 'text', text: 'Be helpful' }],
+      },
+    },
   }], '2026-08-19T12:00:00.000Z');
   assert.match(markdown, /## System - 2026-08-19T10:00:00\.000Z/);
   assert.match(markdown, /Be helpful/);
