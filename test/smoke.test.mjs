@@ -1534,7 +1534,7 @@ console.log('\n[11a] locale dictionaries — all eight host languages share one 
   const expectedIntl = { zh: 'zh-CN', en: 'en-US', de: 'de-DE', es: 'es-ES', fr: 'fr-FR', ja: 'ja-JP', pt: 'pt-BR', ru: 'ru-RU' };
   assert(JSON.stringify(Object.keys(dicts).sort()) === JSON.stringify(Object.keys(expectedIntl).sort()),
     `all eight host languages are registered (got ${Object.keys(dicts).sort().join(',')})`);
-  assert(Object.keys(dicts.en).length === 400, `en dictionary has 400 keys (got ${Object.keys(dicts.en).length})`);
+  assert(Object.keys(dicts.en).length === 427, `en dictionary has 427 keys (got ${Object.keys(dicts.en).length})`);
   const baseKeys = JSON.stringify(Object.keys(dicts.en).sort());
   const placeholders = (text) => (text.match(/\{\w+\}/g) ?? []).sort().join(',');
   for (const lang of Object.keys(expectedIntl)) {
@@ -2777,6 +2777,27 @@ console.log('\n[11d] client half — full-text results and archived conversation
   assert(resultBeforeCall?.[0]?.segments.filter((segment) => segment.text === 'too early').length === 1, 'same-message result before its call remains unmatched exactly once');
   assert(resultBeforeCall?.[0]?.segments[1]?.result === undefined, 'same-message result before its call is never folded into that call');
 
+  const reusedTurn = { key: 'turn:40' };
+  const callRow = (seq, step) => ({ seq, step, turn: reusedTurn, role: 'assistant', segments: [
+    { kind: 'tool-call', callId: 'reused-by-provider', name: 'read_file', argumentsText: '{}' },
+  ] });
+  const resultRow = (seq, step, text) => ({ seq, step, turn: reusedTurn, role: 'tool', segments: [
+    { kind: 'tool-result', toolCallId: 'reused-by-provider', text },
+  ] });
+  const perStep = clientExports.__test.buildPreviewNodes([callRow(41, 1), callRow(42, 2), resultRow(43, 2, 'step 2 output')]);
+  assert(perStep.length === 2 && perStep[0].segments[0].result === undefined
+    && perStep[1].segments[0].result?.text === 'step 2 output',
+  'a later step result attaches only to its own call even when an earlier step reused its ID');
+  const unknownStep = clientExports.__test.buildPreviewNodes([callRow(41, 1), resultRow(43, null, 'unknown step output')]);
+  assert(unknownStep.length === 2 && unknownStep[0].segments[0].result === undefined
+    && unknownStep[1].segments[0].text === 'unknown step output',
+  'a result with unknown step stays separate from a call in a known step');
+  const legacyCalls = clientExports.__test.buildPreviewNodes([callRow(41, null), callRow(42, null), resultRow(43, null, 'ambiguous output')]);
+  const legacyResults = clientExports.__test.buildPreviewNodes([callRow(41, null), resultRow(42, null, 'first'), resultRow(43, null, 'second')]);
+  assert(legacyCalls.length === 3 && legacyCalls[2].segments[0].text === 'ambiguous output'
+    && legacyResults.length === 3 && legacyResults[1].segments[0].text === 'first' && legacyResults[2].segments[0].text === 'second',
+  'legacy collisions stay separate when multiple calls or results could share the ID');
+
   const copyNode = clientExports.__test.buildPreviewNodes?.([{
     seq: 7,
     role: 'assistant',
@@ -3103,7 +3124,7 @@ console.log('\n[11e] client half — preview primitive fallback');
   assert(fallback.type === 'p' && fallback.props.className === 'dac-preview-plain' && fallback.props.children === '<b>literal</b>', 'preview Markdown fallback renders literal text in a plain paragraph');
 }
 
-console.log('\n[11e2] client half — collapsed prompt and reasoning headings');
+console.log('\n[11e2] client half — archived turn process and read-only outcomes');
 {
   const turn = { key: 'turn:1', startSeq: 1, endSeq: 12, answerSeq: 11, processStartSeq: 3, rowCount: 6, toolCallCount: 1, messageCount: 0, subagentCount: 0, endReason: 'completed' };
   const messages = [
@@ -3121,11 +3142,13 @@ console.log('\n[11e2] client half — collapsed prompt and reasoning headings');
   ]);
   assert(anchored.map((node) => node.role).join(',') === 'system,user', 'resumed system prompt is anchored before the relevant human input');
   const process = nodes.find((node) => node.kind === 'process');
-  assert(nodes.length === 4 && process?.members.length === 3, 'a complete turn folds context, tool workflow and final reasoning while retaining steering input');
+  assert(nodes.map(node => node.kind ?? node.role).join(',') === 'user,process,user,process,assistant'
+    && process?.members.length === 2 && nodes[3]?.members[0]?.segments[0]?.kind === 'reasoning',
+  'a complete turn folds the tool workflow and final reasoning without moving them across a steering input');
   assert(process?.members[1]?.segments[1]?.result?.text === 'README.md', 'folded process retains the correlated tool result');
   assert(nodes.at(-1)?.segments.length === 1 && nodes.at(-1)?.segments[0]?.text === '**Answer**', 'final answer stays outside process with no duplicated reasoning');
   assert(!clientExports.__test.buildPreviewNodes(messages.slice(0, 5)).some((node) => node.kind === 'process'), 'partial page never folds an incomplete turn');
-  assert(clientExports.__test.buildPreviewNodes(messages).filter((node) => node.kind === 'process').length === 1, 'merging later page creates exactly one process');
+  assert(clientExports.__test.buildPreviewNodes(messages).filter((node) => node.kind === 'process').length === 2, 'merging the later page creates one process disclosure per contiguous group');
   assert(!clientExports.__test.buildPreviewNodes(messages.map((node) => ({ ...node, turn: { ...turn, endSeq: null, answerSeq: null } }))).some((node) => node.kind === 'process'), 'unfinished turns keep visible events without claiming a final answer');
   const otherTurn = { ...turn, key: 'turn:20', startSeq: 20, endSeq: 40, answerSeq: null };
   const isolatedTool = clientExports.__test.buildPreviewNodes([
@@ -3140,12 +3163,88 @@ console.log('\n[11e2] client half — collapsed prompt and reasoning headings');
     const tree = createHookHarness(clientExports.__test.PreviewMessage).render({ node: process, t, sessionId: 'test' });
     const rows = collectElements(tree);
     const fold = rows.find((el) => el.type === 'details' && el.props.className === 'dac-preview-process');
-    assert(fold && fold.props.open !== true && elementText(fold.props.children[0]).includes('1 次工具调用'), 'outer process uses actual tool count and starts collapsed');
+    assert(fold && fold.props.open !== true && elementText(fold.props.children[0]).includes('执行命令'), 'outer process summarizes the actual command and starts collapsed');
     assert(rows.some((el) => el.type === DisclosureRowStub && elementText(el.props.collapsedContent).includes('List workspace contents')), 'tool disclosure exposes its actual description as a compact summary');
     assert(!rows.some((el) => el.props?.className === 'dac-preview-user-bubble'), 'all process members remain on the assistant side');
     assert(!rows.some((el) => el.type?.name === 'PreviewActions'), 'process rows do not repeat copy and timestamp chrome');
     Object.assign(moduleTable.react, savedHooks);
   }
+}
+{
+  const turn = { key: 'turn:20', startSeq: 20, endSeq: 30, answerSeq: null, processStartSeq: 22,
+    rowCount: 7, durationMs: 12500, toolCallCount: 2, messageCount: 1, subagentCount: 0, endReason: 'error' };
+  const message = (seq, role, segments) => ({ seq, role, turn, segments });
+  const toolLog = 'long synthetic MCP output\n'.repeat(60);
+  const messages = [
+    message(21, 'user', [{ kind: 'text', text: 'Inspect the workspace' }]),
+    message(22, 'assistant', [{ kind: 'reasoning', text: 'Check the workspace first' },
+      { kind: 'tool-call', callId: 'mcp-1', name: 'run_code', argumentsText: '{"description":"Read project metadata","code":"const result = await inspect()"}' }]),
+    message(23, 'tool', [{ kind: 'tool-result', toolCallId: 'mcp-1', text: toolLog }]),
+    message(24, 'assistant', [{ kind: 'retry', outcome: 'started', attempt: 1, maximum: 2, delayMs: 1500, code: 'RATE_LIMIT', text: '<synthetic backoff>' }]),
+    message(25, 'assistant', [{ kind: 'retry', outcome: 'started', attempt: 2, maximum: 2, delayMs: 3000, text: '' }]),
+    message(26, 'assistant', [{ kind: 'text', text: 'Partial progress' }, { kind: 'tool-call', name: 'browse', argumentsText: '{"url":"https://example.test/docs"}' }]),
+    message(30, 'assistant', [{ kind: 'turn-status', outcome: 'error', code: 'TIMEOUT', text: 'Synthetic request timeout' }]),
+  ];
+  const { buildPreviewNodes, PreviewMessage } = clientExports.__test;
+  const nodes = buildPreviewNodes(messages, 'failed');
+  const en = (key, params) => translateClient(clientCalls.localeRegister[0].dicts.en, key, params);
+  const savedHooks = { ...moduleTable.react };
+  const rendered = (list, matchSeq) => list.map(node => ({ type: PreviewMessage, props: { node, sessionId: 'failed', t: en, matchSeq } }));
+  const elements = collectElements(rendered(nodes));
+  const process = elements.find(el => el.type === 'details' && el.props.className === 'dac-preview-process');
+  assert(process && process.props.open !== true && /2 retries/.test(elementText(process.props.children[0]))
+    && /12\.5/.test(elementText(process.props.children[0])), 'failed turn with no answer starts collapsed and shows the real retry count and elapsed time');
+  const status = elements.find(el => el.props?.role === 'status' && elementText(el).includes('Synthetic request timeout'));
+  assert(status && elementText(status).includes('TIMEOUT') && !collectElements(process).some(el => el.props?.role === 'status'
+    && elementText(el).includes('Synthetic request timeout')),
+    'terminal error text and code stay visible outside the process disclosure');
+  assert(nodes[1]?.members?.map(node => node.seq).join(',') === '22,24,25,26'
+    && nodes[1]?.members?.[0]?.segments[1].result?.text === toolLog,
+  'a failed process retains partial reasoning, correlated output, retries, and partial reply in event order');
+  const retryRow = elements.find(el => el.type === DisclosureRowStub && el.props.title.includes('1/2'));
+  assert(retryRow?.props.open === false && elementText(retryRow.props.children).includes('<synthetic backoff>'),
+    'the recorded retry has a compact attempt count and expandable escaped reason');
+  assert(elements.some(el => el.type === DisclosureRowStub && el.props.open === false
+    && elementText(el.props.collapsedContent).includes('https://example.test/docs')), 'browser operation summary uses the recorded target');
+  assert(!elements.some(el => el.type === 'button' && /retry/i.test(elementText(el))), 'historical retries never offer a retry action');
+  const matching = collectElements(rendered(nodes, 23));
+  assert(matching.some(el => el.type === 'details' && el.props.className === 'dac-preview-process' && el.props.open === true)
+    && matching.some(el => el.props?.['data-preview-match'] === 'true' && elementText(el).includes(toolLog)),
+  'a search match on a paired tool result reveals its source row inside an unanswered process');
+  const partial = buildPreviewNodes(messages.slice(-3));
+  assert(!partial.some(node => node.kind === 'process') && collectElements(rendered(partial)).some(el => el.props?.role === 'status'
+    && elementText(el).includes('Synthetic request timeout')), 'a partial page still presents retries and terminal failure without folding a truncated process');
+  const stopped = { ...turn, endReason: 'aborted', rowCount: 2, durationMs: undefined };
+  const interrupted = buildPreviewNodes([
+    { ...messages[1], turn: stopped },
+    { ...messages.at(-1), turn: stopped, segments: [{ kind: 'turn-status', outcome: 'aborted', text: '' }] },
+  ]);
+  assert(interrupted[0]?.kind === 'process' && collectElements(rendered(interrupted)).some(el => el.props?.role === 'status'
+    && elementText(el).includes('Stopped')), 'an interrupted turn with no final response retains its process and has a visible stopped status');
+  const recovered = { ...turn, answerSeq: 26, endReason: 'completed', rowCount: 3, toolCallCount: 0, messageCount: 0 };
+  const successful = buildPreviewNodes([
+    { ...messages[0], turn: recovered },
+    { ...messages[3], turn: recovered },
+    { ...message(26, 'assistant', [{ kind: 'text', text: 'Recovered answer' }]), turn: recovered },
+  ]);
+  const recoveredRows = collectElements(rendered(successful));
+  assert(recoveredRows.some(el => el.type === 'summary' && /Completed.*12\.5.*1 retry/.test(elementText(el)))
+    && recoveredRows.some(el => el.type === MarkdownTextStub && el.props.text === 'Recovered answer')
+    && !recoveredRows.some(el => el.props?.role === 'status'), 'recovered turn shows actual retry and duration with its answer outside the process');
+  const withSteering = { ...turn, rowCount: 8 };
+  const steered = [
+    ...messages.slice(0, 4), message(24.5, 'user', [{ kind: 'text', text: 'Use the other workspace' }]), ...messages.slice(4),
+  ].map(node => ({ ...node, turn: withSteering }));
+  const steeredRows = collectElements(rendered(buildPreviewNodes(steered)));
+  const steeringIndex = steeredRows.findIndex(el => el.props?.['data-preview-role'] === 'user' && elementText(el).includes('Use the other workspace'));
+  const progressIndex = steeredRows.findIndex(el => el.type === MarkdownTextStub && el.props.text === 'Partial progress');
+  assert(steeringIndex >= 0 && steeringIndex < progressIndex,
+    'assistant activity after a steering input stays after that input');
+  const command = buildPreviewNodes([{ seq: 31, role: 'system', segments: [{ kind: 'command', outcome: 'success', name: 'help', text: '' }] }]);
+  assert(collectElements(rendered(command)).some(el => el.props?.role === 'status' && elementText(el).includes('/help'))
+    && !collectElements(rendered(command)).some(el => el.type === DisclosureRowStub),
+  'archived slash command appears as a compact separate read-only status');
+  Object.assign(moduleTable.react, savedHooks);
 }
 {
   const savedHooks = { ...moduleTable.react };
