@@ -9,21 +9,16 @@
 <p><strong>Retrouvez vos conversations DSH, gérez vos archives et conservez des sauvegardes ZIP.</strong></p>
 <p><code>dsh-archived-chats</code></p>
 
-<p><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.es.md">Español</a> · <strong>Français</strong> · <a href="README.de.md">Deutsch</a> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
+<p><a href="README.md">简体中文</a> · <a href="README.en.md">English</a> · <a href="README.ja.md">日本語</a> · <a href="README.es.md">Español</a> · <strong>Français</strong> · <a href="README.de.md">Deutsch</a> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
 
 <p><a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT License</a></p>
 
 <p>
-  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat-square"></a>
-  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm total downloads" src="https://img.shields.io/npm/dt/dsh-archived-chats?style=flat-square&amp;label=total%20downloads"></a>
-  <a href="README.md#install-and-open"><img alt="DSH supported to 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-supported%20to%200.2.2--rc.3-2563eb?style=flat-square"></a>
-  <a href="https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Ultroncn/dsh-archived-chats/ci.yml?branch=main&amp;style=flat-square&amp;label=CI"></a>
-  <a href="https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml"><img alt="Node.js 18 and 24" src="https://img.shields.io/badge/Node.js-18%20%7C%2024-339933?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white"></a>
-</p>
-<p>
-  <a href="https://github.com/Ultroncn/dsh-archived-chats/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat-square"></a>
-  <a href="https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/"><img alt="Awesome DSH Plugin" src="https://awesome-dsh-plugin.com/badge.svg"></a>
-  <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights health" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
+  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Version npm" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=Version%20npm"></a>
+  <a href="#compatibilit%C3%A9"><img alt="DSH compatible jusqu’à 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-compatible%20jusqu%E2%80%99%C3%A0%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Téléchargements npm sur les 18 derniers mois" title="Téléchargements npm sur les 18 derniers mois" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=T%C3%A9l%C3%A9chargements%20npm"></a>
+  <a href="LICENSE"><img alt="Licence · MIT" src="https://img.shields.io/badge/Licence-MIT-2ea44f?style=flat"></a>
+  <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
 </p>
 
 <p><a href="https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/">Plugin market</a> · <a href="https://www.npmjs.com/package/dsh-archived-chats">npm</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/releases">Releases</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/discussions">Discussions</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/security/advisories/new">Private security report</a></p>
@@ -103,7 +98,7 @@ L’archivage, le désarchivage et le recensement des conversations utilisent le
 
 ## Captures d’écran
 
-Les [captures du README en anglais](README.md#screenshots) montrent des conversations de démonstration dans un hôte DSH officiel isolé.
+Les [captures du README en anglais](README.en.md#screenshots) montrent des conversations de démonstration dans un hôte DSH officiel isolé.
 
 ## Documentation et retours
 
@@ -113,7 +108,9 @@ Pour les questions et suggestions, utilisez [GitHub Discussions](https://github.
 
 ## Développement et validation
 
-Les commandes de test du module, d’intégration native et de vérification du paquet figurent à la section [Development and validation](README.md#development-and-validation). Les tests natifs emploient des données temporaires isolées. Les neuf cas doivent s’exécuter dans chaque environnement de test. Avant de contribuer, lisez le [guide de contribution](CONTRIBUTING.md) dans son intégralité.
+[![CI](https://img.shields.io/github/actions/workflow/status/Ultroncn/dsh-archived-chats/ci.yml?branch=main&style=flat&label=CI)](https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml) [![Node.js 18 | 24](https://img.shields.io/badge/Node.js-18%20%7C%2024-339933?style=flat&logo=nodedotjs&logoColor=white)](https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml)
+
+Les commandes de test du module, d’intégration native et de vérification du paquet figurent à la section [Development and validation](README.en.md#development-and-validation). Les tests natifs emploient des données temporaires isolées. Les neuf cas doivent s’exécuter dans chaque environnement de test. Avant de contribuer, lisez le [guide de contribution](CONTRIBUTING.md) dans son intégralité.
 
 ## Désinstaller
 

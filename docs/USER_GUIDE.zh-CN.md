@@ -1,6 +1,6 @@
 # 归档管理用户指南
 
-[English](USER_GUIDE.md) · 简体中文 · [返回 README](../README.zh-CN.md)
+[English](USER_GUIDE.md) · 简体中文 · [返回 README](../README.md)
 
 归档管理为 DSH 已归档聊天提供查看和管理页面，并扩展按工作区批量归档。本文描述 2.0.4 的行为（包含未归档正文搜索），原生集成测试覆盖 DSH `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1` 和 `0.2.2-rc.3`。版本变更见[更新日志](../CHANGELOG.md)，接口和数据格式见[架构说明](ARCHITECTURE.md)。
 
