@@ -764,3 +764,83 @@ test('restore rechecks every staged cwd before the first persistence write', asy
   assert.deepEqual(f.state.archivedSessionIds, ['existing']);
   assert.deepEqual(await readdir(f.root), []);
 });
+
+test('modern handle rejects an inherited count beyond the event log before writing', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const calls = [];
+  const persistence = {
+    locate: async () => { calls.push('locate'); return { path: join(f.root, 's1', 'session.jsonl') }; },
+    createWriteHandle: async () => { calls.push('createWriteHandle'); throw new Error('must not be called'); },
+  };
+  const adapter = createRestoreAdapter({ persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const record = item('s1');
+  record.record.source.inheritedEventCount = 5;
+  const tx = await adapter.prepare([record]);
+  await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-unsupported' && error.reason === 'inherited-boundary-missing');
+  assert.deepEqual(calls, []);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing']);
+});
+
+test('modern handle refuses a pre-existing restore destination before writing', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  await mkdir(join(f.root, 's1'), { recursive: true });
+  const calls = [];
+  const persistence = {
+    locate: async () => { calls.push('locate'); return { path: join(f.root, 's1', 'session.jsonl') }; },
+    createWriteHandle: async () => { calls.push('createWriteHandle'); throw new Error('must not be called'); },
+  };
+  const adapter = createRestoreAdapter({ persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('s1')]);
+  await tx.stage(item('s1'));
+  await assert.rejects(tx.commit(), { code: 'id-conflict', status: 409 });
+  assert.deepEqual(calls, ['locate']);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing']);
+});
+
+test('a dedicated writer resolving without an undo leaves an uncertain retained destination', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  f.persistence.restoreSession = async (payload) => { f.writes.push(payload); return {}; };
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  await tx.stage(item('a'));
+  // No undo was returned, so the write cannot be compensated: the commit
+  // reports the incomplete rollback instead of silently claiming success,
+  // and the destination is retained rather than removed.
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-rollback-failed'
+    && error.cause?.message === 'dedicated restore creation outcome is uncertain; destination retained');
+  assert.deepEqual(f.removed, []);
+  assert.equal(f.metadata.has('a'), false);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing']);
+});
+
+test('staging rejects a prepared record with the wrong format and cleans up', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  const wrongFormat = item('a');
+  wrongFormat.record.format = 'other/format';
+  await assert.rejects(() => tx.stage(wrongFormat), { code: 'restore-record-invalid' });
+  assert.deepEqual(await readdir(f.root), []);
+  assert.deepEqual(f.writes, []);
+});
+
+test('a workspace without a session list still attaches the restored session', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  f.registry.list = () => [{
+    id: 'ws-1', title: 'Workspace',
+    attachSession: async (id) => { f.writes.push({ attach: id }); },
+    detachSession: async (id) => { f.writes.push({ detach: id }); },
+  }];
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  await tx.stage(item('a'));
+  assert.deepEqual((await tx.commit()).restored, ['a']);
+  assert.ok(f.writes.some((entry) => entry.attach === 'a'));
+  await rm(f.root, { recursive: true, force: true });
+});
