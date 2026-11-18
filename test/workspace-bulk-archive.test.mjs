@@ -97,6 +97,119 @@ test('rejects malformed archivedSessionIds capability shapes before any operatio
   }
 });
 
+test('Set-backed session and archived collections are accepted and deduplicated', async () => {
+  const item = fixture({
+    sessionIds: new Set(['cold-a', 'cold-b', 'cold-a']),
+    archivedIds: ['already-archived'],
+  });
+  const service = createWorkspaceBulkArchiveService({ ...item.dependencies,
+    registry: { ...item.registry, archivedSessionIds: new Set(['already-archived', 'cold-b']) },
+  });
+  const preview = await service.preview('workspace-a');
+  assert.deepEqual(preview.sessions.map(({ id }) => id), ['cold-a']);
+  assert.deepEqual(preview.skipped, [{ id: 'cold-b', reason: 'session-archived' }]);
+});
+
+test('invalid workspace session entries are skipped without failing the preview', async () => {
+  const item = fixture({ sessionIds: [null, 42, '', { id: '' }, { title: 'No id' }, 'cold-a'] });
+  const preview = await item.service.preview('workspace-a');
+  assert.deepEqual(preview.sessions.map(({ id }) => id), ['cold-a']);
+  assert.deepEqual(preview.skipped, []);
+});
+
+test('malformed session inventory fails visibly instead of silently omitting chats', async () => {
+  const cases = [
+    async () => 'not-an-array',
+    async () => [{ id: 'cold-a' }, null],
+    async () => [{ id: 'cold-a' }, { id: '' }],
+    async () => [{ id: 'cold-a' }, 42],
+  ];
+  for (const listSessionHeaders of cases) {
+    const item = fixture({ sessionIds: ['cold-a'] });
+    const service = createWorkspaceBulkArchiveService({ ...item.dependencies, listSessionHeaders });
+    await assert.rejects(service.listWorkspaces(), (error) => error?.code === 'session-inventory-unavailable' && error?.status === 503);
+    await assert.rejects(service.listSessions(), (error) => error?.code === 'session-inventory-unavailable' && error?.status === 503);
+  }
+
+  // A preview of the ungrouped workspace validates the inventory first, too.
+  const item = fixture({ sessionIds: ['cold-a'] });
+  const good = createWorkspaceBulkArchiveService({ ...item.dependencies,
+    listSessionHeaders: async () => [{ id: 'cold-a' }, { id: 'free-chat' }],
+  });
+  const ungrouped = (await good.listWorkspaces()).find((group) => group.ungrouped === true);
+  assert.ok(ungrouped);
+  const bad = createWorkspaceBulkArchiveService({ ...item.dependencies,
+    listSessionHeaders: async () => [{ id: 'free-chat' }, null],
+  });
+  await assert.rejects(bad.preview(ungrouped.id), (error) => error?.code === 'session-inventory-unavailable' && error?.status === 503);
+});
+
+test('an unavailable archive clock fails visibly instead of issuing a confirmation', async () => {
+  for (const now of [() => 'not-a-date', () => new Date(Number.NaN), () => null]) {
+    const item = fixture({ sessionIds: ['cold-a'] });
+    const service = createWorkspaceBulkArchiveService({ ...item.dependencies, now });
+    await assert.rejects(service.preview('workspace-a'), (error) => error?.code === 'workspace-archive-clock-unavailable' && error?.status === 503);
+  }
+
+  const item = fixture({ sessionIds: ['cold-a'] });
+  let currentTime = NOW;
+  const service = createWorkspaceBulkArchiveService({ ...item.dependencies, now: () => new Date(currentTime) });
+  const prepared = await service.preview('workspace-a');
+  currentTime = Number.NaN;
+  await assert.rejects(service.execute(prepared.token, prepared.nonce), (error) => error?.code === 'workspace-archive-clock-unavailable' && error?.status === 503);
+});
+
+test('non-boolean conversation checks are treated as unavailable, never as empty', async () => {
+  for (const inspected of [null, {}, { hasConversation: 'yes' }, { hasConversation: 1 }]) {
+    const item = fixture({ sessionIds: ['cold-a'] });
+    const service = createWorkspaceBulkArchiveService({ ...item.dependencies, inspectConversation: async () => inspected });
+    const preview = await service.preview('workspace-a');
+    assert.deepEqual(preview.sessions, []);
+    assert.deepEqual(preview.skipped, [{ id: 'cold-a', reason: 'session-unavailable' }]);
+    const rows = await service.listSessions();
+    assert.deepEqual(rows.map((row) => [row.id, row.archiveEligible]), [['cold-a', false]]);
+  }
+});
+
+test('unavailable official activity state fails visibly instead of guessing liveness', async () => {
+  for (const activity of [null, {}, 'busy']) {
+    const item = fixture({ sessionIds: ['cold-a'] });
+    const service = createWorkspaceBulkArchiveService({ ...item.dependencies, getActivity: async () => activity });
+    await assert.rejects(service.listSessions(), (error) => error?.code === 'workspace-activity-unavailable' && error?.status === 503);
+    await assert.rejects(service.preview('workspace-a'), (error) => error?.code === 'workspace-activity-unavailable' && error?.status === 503);
+  }
+});
+
+test('excluded sessions are skipped in preview and rechecked before archiving', async () => {
+  const item = fixture({ sessionIds: ['cold-a', 'cold-b', 'cold-c'] });
+  const service = createWorkspaceBulkArchiveService({ ...item.dependencies,
+    getExcludedIds: async () => ['cold-b'],
+  });
+  const preview = await service.preview('workspace-a');
+  assert.deepEqual(preview.sessions.map(({ id }) => id), ['cold-a', 'cold-c']);
+  assert.deepEqual(preview.skipped, [{ id: 'cold-b', reason: 'session-ineligible' }]);
+
+  const late = fixture({ sessionIds: ['cold-a'] });
+  let excluded = new Set();
+  const lateService = createWorkspaceBulkArchiveService({ ...late.dependencies,
+    getExcludedIds: async () => [...excluded],
+  });
+  const prepared = await lateService.preview('workspace-a');
+  excluded = new Set(['cold-a']);
+  const result = await lateService.execute(prepared.token, prepared.nonce);
+  assert.deepEqual(result.archived, []);
+  assert.deepEqual(result.skipped, [{ id: 'cold-a', reason: 'session-ineligible' }]);
+  assert.equal(late.calls.archive.length, 0);
+});
+
+test('listSessions honours target and excluded id filters', async () => {
+  const item = fixture({ sessionIds: ['cold-a', 'cold-b', 'cold-c'] });
+  const rows = await item.service.listSessions({ targetIds: ['COLD-A', 'cold-b'], excludedIds: ['cold-b'] });
+  assert.deepEqual(rows.map((row) => row.id), ['cold-a']);
+  const onlyColdC = await item.service.listSessions({ targetIds: ['cold-c'] });
+  assert.deepEqual(onlyColdC.map((row) => row.id), ['cold-c']);
+});
+
 test('lists and previews only safe workspace and cold-session fields in stable deduplicated order', async () => {
   const item = fixture();
 
