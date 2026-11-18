@@ -75,11 +75,11 @@ Uma conversa sem diretório de trabalho permanece em **Archived** até que a lis
 | **Origins & Branches** | Consultar origens, ramificações e subagentes, em modo somente leitura, em todos os espaços de trabalho e estados de arquivamento. |
 | **About** | Verificar atualizações automaticamente, identificar o Host e cópias locais do repositório, copiar detalhes da instalação e atualizar quando houver suporte do Host. |
 
-A busca no conteúdo começa com dois caracteres e percorre o escopo selecionado em lotes. Ela mostra o progresso, as correspondências e as falhas, com as opções **Stop** e **Retry**. **Archived** busca nas conversas arquivadas e **Unarchived** nas conversas não arquivadas. As duas páginas permitem buscar nas mensagens e abrir a prévia no turno correspondente. O arquivamento em lote segue as mesmas exclusões de sessões ocultas da lista. Veja o [guia do usuário](docs/USER_GUIDE.md) para saber mais sobre o escopo, os limites para logs longos e as operações disponíveis.
+A busca no conteúdo começa com dois caracteres e percorre o escopo selecionado em lotes. Ela mostra o progresso, as correspondências e as falhas, com as opções **Stop search** e **Retry unfinished**. **Archived** busca nas conversas arquivadas e **Unarchived** nas conversas não arquivadas. As duas páginas permitem buscar nas mensagens e abrir a prévia no turno correspondente. O arquivamento em lote segue as mesmas exclusões de sessões ocultas da lista. Veja o [guia do usuário](docs/USER_GUIDE.md) para saber mais sobre o escopo, os limites para logs longos e as operações disponíveis.
 
 ## Arquivamento e exclusão permanente
 
-O plugin usa as operações oficiais do Host para arquivar e desarquivar. Excluir uma conversa, excluir as conversas selecionadas ou usar **Delete all** em um espaço de trabalho ou na lista inteira exige confirmação. As ações em lote por espaço de trabalho e as globais abrangem todo o seu escopo, independentemente da busca e dos filtros ativos.
+O plugin usa as operações oficiais do Host para arquivar e desarquivar. Excluir uma conversa, excluir as conversas selecionadas ou usar **Delete all** em um espaço de trabalho exige confirmação. A opção global **Delete all** também exige confirmação e abrange as conversas arquivadas de todos os espaços de trabalho. As ações em lote por espaço de trabalho e as globais abrangem todo o seu escopo, independentemente da busca e dos filtros ativos.
 
 A exclusão permanente abrange os diretórios usados exclusivamente pelas sessões e os registros correspondentes das conversas selecionadas e de seus subagentes descendentes. Os diretórios e arquivos de projeto, os anexos compartilhados fora dos diretórios de sessão e os backups independentes são preservados.
 
