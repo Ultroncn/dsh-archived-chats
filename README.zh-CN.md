@@ -1,5 +1,3 @@
-[![DSH Insights health](https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg)](https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/)
-
 <p align="center">
   <img src="assets/brand/archive-management-banner.png" alt="归档管理：面向 DeepSeek Harness 的本地优先归档聊天中心" width="100%">
 </p>
@@ -11,21 +9,28 @@
 <p><strong>找回 DSH 历史对话，搜索、管理归档并保存 ZIP 备份。</strong></p>
 <p><code>dsh-archived-chats</code></p>
 
+<p><a href="README.md">English</a> · 简体中文</p>
+
+<p><a href="CHANGELOG.md">更新日志</a> · <a href="LICENSE">MIT 许可证</a></p>
+
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat-square"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm 累计下载量" src="https://img.shields.io/npm/dt/dsh-archived-chats?style=flat-square&amp;label=total%20downloads"></a>
+  <a href="#安装与打开"><img alt="DSH 支持至 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-%E6%94%AF%E6%8C%81%E8%87%B3%200.2.2--rc.3-2563eb?style=flat-square"></a>
   <a href="https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Ultroncn/dsh-archived-chats/ci.yml?branch=main&amp;style=flat-square&amp;label=CI"></a>
   <a href="https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml"><img alt="Node.js 18 and 24" src="https://img.shields.io/badge/Node.js-18%20%7C%2024-339933?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white"></a>
 </p>
 <p>
   <a href="https://github.com/Ultroncn/dsh-archived-chats/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat-square"></a>
   <a href="https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/"><img alt="Awesome DSH Plugin" src="https://awesome-dsh-plugin.com/badge.svg"></a>
+  <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights health" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
 </p>
 
-<p><a href="README.md">English</a> · 简体中文</p>
 <p><a href="https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/">插件市场</a> · <a href="https://www.npmjs.com/package/dsh-archived-chats">npm</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/releases">版本发布</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/discussions">问题交流</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/security/advisories/new">私密报告漏洞</a></p>
 
 </div>
+
+> 归档管理是社区维护的 DeepSeek Harness 插件，并非 DeepSeek AI 官方产品。
 
 归档管理为 DeepSeek Harness 补充会话查找、整理和备份能力。搜索过去的解决方案，直接预览内容，按工作区归档，或在删除前保存一份 ZIP 备份。
 

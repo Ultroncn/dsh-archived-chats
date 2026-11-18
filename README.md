@@ -1,5 +1,3 @@
-[![DSH Insights health](https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg)](https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/)
-
 <p align="center">
   <img src="assets/brand/archive-management-banner.png" alt="Archive Management: local-first archived-chat center for DeepSeek Harness" width="100%">
 </p>
@@ -11,21 +9,28 @@
 <p><strong>Find past DSH chats, manage archives, and keep ZIP backups.</strong></p>
 <p><code>dsh-archived-chats</code></p>
 
+<p>English · <a href="README.zh-CN.md">简体中文</a></p>
+
+<p><a href="CHANGELOG.md">Changelog</a> · <a href="LICENSE">MIT License</a></p>
+
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat-square"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm total downloads" src="https://img.shields.io/npm/dt/dsh-archived-chats?style=flat-square&amp;label=total%20downloads"></a>
+  <a href="#install-and-open"><img alt="DSH supported to 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-supported%20to%200.2.2--rc.3-2563eb?style=flat-square"></a>
   <a href="https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Ultroncn/dsh-archived-chats/ci.yml?branch=main&amp;style=flat-square&amp;label=CI"></a>
   <a href="https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml"><img alt="Node.js 18 and 24" src="https://img.shields.io/badge/Node.js-18%20%7C%2024-339933?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white"></a>
 </p>
 <p>
   <a href="https://github.com/Ultroncn/dsh-archived-chats/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat-square"></a>
   <a href="https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/"><img alt="Awesome DSH Plugin" src="https://awesome-dsh-plugin.com/badge.svg"></a>
+  <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights health" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
 </p>
 
-<p>English · <a href="README.zh-CN.md">简体中文</a></p>
 <p><a href="https://awesome-dsh-plugin.com/p/Ultroncn/dsh-archived-chats/">Plugin market</a> · <a href="https://www.npmjs.com/package/dsh-archived-chats">npm</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/releases">Releases</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/discussions">Discussions</a> · <a href="https://github.com/Ultroncn/dsh-archived-chats/security/advisories/new">Private security report</a></p>
 
 </div>
+
+> Archive Management is a community-maintained DeepSeek Harness plugin, not an official DeepSeek AI product.
 
 Archive Management adds conversation search, organization and backups to DeepSeek Harness. Find a past solution, preview its context, archive by workspace, or save a ZIP before deleting a chat.
 
