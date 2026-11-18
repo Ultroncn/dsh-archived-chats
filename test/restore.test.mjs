@@ -131,6 +131,30 @@ test('staging rejects a record that was never prepared and cleans its staging di
   await rm(f.root, { recursive: true, force: true });
 });
 
+test('staging rejects a prepared record with the wrong format and cleans its staging directory', async () => {
+  const f = await fixture();
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  const invalid = item('a');
+  invalid.record.format = 'other/format';
+  await assert.rejects(() => tx.stage(invalid), (error) => error.code === 'restore-record-invalid');
+  assert.deepEqual(await readdir(f.root), []);
+  assert.deepEqual(f.writes, []);
+  await rm(f.root, { recursive: true, force: true });
+});
+
+test('staging rejects a prepared record whose source meta names another session', async () => {
+  const f = await fixture();
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  const invalid = item('a');
+  invalid.record.source.meta.id = 'someone-else';
+  await assert.rejects(() => tx.stage(invalid), (error) => error.code === 'restore-record-invalid');
+  assert.deepEqual(await readdir(f.root), []);
+  assert.deepEqual(f.writes, []);
+  await rm(f.root, { recursive: true, force: true });
+});
+
 test('a legacy create/append host without exclusive creation is refused before writing', async () => {
   const f = await fixture();
   const created = [];
