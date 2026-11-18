@@ -490,6 +490,23 @@ test('modern restore flushes an empty log and releases ownership', async t => {
   assert.equal(existsSync(host.raw.locate(record.record.source.meta).path), true);
 });
 
+test('modern restore refuses a pre-existing destination before creating a handle', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const host = modernHost(f.root);
+  const record = modernItem('taken');
+  const directory = join(f.root, 'sessions', record.id);
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, 'sentinel.txt'), 'owned by another process');
+  const adapter = createRestoreAdapter({ ...f, persistence: resolvePersistenceCompat(host.raw), tempRoot: f.root });
+  const tx = await adapter.prepare([record]); await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'id-conflict' && error.status === 409);
+  assert.equal(host.handles.size, 0, 'no write handle is created for a taken destination');
+  assert.equal(existsSync(join(directory, 'session.jsonl')), false, 'nothing is written into the taken destination');
+  assert.equal(existsSync(join(directory, 'sentinel.txt')), true, 'the pre-existing destination is left untouched');
+  assert.deepEqual(f.registry.archivedSessionIds, ['existing']);
+});
+
 test('modern restore rejects a write handle missing append before writing', async t => {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
