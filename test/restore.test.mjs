@@ -131,6 +131,30 @@ test('staging rejects a record that was never prepared and cleans its staging di
   await rm(f.root, { recursive: true, force: true });
 });
 
+test('staging rejects a prepared record with the wrong format and cleans its staging directory', async () => {
+  const f = await fixture();
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  const invalid = item('a');
+  invalid.record.format = 'other/format';
+  await assert.rejects(() => tx.stage(invalid), (error) => error.code === 'restore-record-invalid');
+  assert.deepEqual(await readdir(f.root), []);
+  assert.deepEqual(f.writes, []);
+  await rm(f.root, { recursive: true, force: true });
+});
+
+test('staging rejects a prepared record whose source meta names another session', async () => {
+  const f = await fixture();
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  const invalid = item('a');
+  invalid.record.source.meta.id = 'someone-else';
+  await assert.rejects(() => tx.stage(invalid), (error) => error.code === 'restore-record-invalid');
+  assert.deepEqual(await readdir(f.root), []);
+  assert.deepEqual(f.writes, []);
+  await rm(f.root, { recursive: true, force: true });
+});
+
 test('a legacy create/append host without exclusive creation is refused before writing', async () => {
   const f = await fixture();
   const created = [];
@@ -197,6 +221,59 @@ test('commit failure rolls back persistence, metadata, archive state, and stagin
   await rm(f.root, { recursive: true, force: true });
 });
 
+test('rollback reports a registry restore failure instead of hiding it', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  let setStateCalls = 0;
+  f.registry.setState = async (next) => {
+    setStateCalls += 1;
+    if (setStateCalls >= 2) throw new Error('registry restore failed');
+    f.state.archivedSessionIds = next.archivedSessionIds;
+  };
+  f.persistence.restoreSession = async (payload) => {
+    f.writes.push(payload);
+    return {
+      undo: async () => { f.removed.push(payload.id); },
+      finish: async () => { throw new Error('finish failed'); },
+    };
+  };
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  await tx.stage(item('a'));
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-rollback-failed');
+  assert.deepEqual(f.removed, ['a']);
+  assert.equal(f.metadata.has('a'), false);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing', 'a'], 'a failed registry restore leaves the committed archive set in place');
+});
+
+test('rollback reports a metadata restore failure instead of hiding it', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  f.metadata.set('a', { tags: ['old'], note: 'old note' });
+  let setCalls = 0;
+  f.metadataStore.set = async (id, value) => {
+    setCalls += 1;
+    if (setCalls >= 2) throw new Error('metadata restore failed');
+    f.metadata.set(id, { ...value, updatedAt: 'now' });
+    f.writes.push({ metadata: id });
+    return f.metadata.get(id);
+  };
+  f.persistence.restoreSession = async (payload) => {
+    f.writes.push(payload);
+    return {
+      undo: async () => { f.removed.push(payload.id); },
+      finish: async () => { throw new Error('finish failed'); },
+    };
+  };
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  await tx.stage(item('a'));
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-rollback-failed');
+  assert.deepEqual(f.removed, ['a']);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing'], 'the registry restore still runs when metadata restore fails');
+  assert.deepEqual(f.metadata.get('a').tags, ['tag'], 'the unrestored metadata keeps the committed value');
+});
+
 test('a rejected dedicated writer never authorizes removal of an unowned destination', async t => {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
@@ -206,6 +283,22 @@ test('a rejected dedicated writer never authorizes removal of an unowned destina
   const tx = await adapter.prepare([record]); await tx.stage(record);
   await assert.rejects(tx.commit(), { code: 'id-conflict' });
   assert.deepEqual(f.removed, []);
+});
+
+test('a dedicated writer that returns no undo keeps the artifact and reports uncertainty', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  // A writer that returns neither a function nor { undo } grants no rollback
+  // ownership, so the outcome is uncertain and nothing may be removed.
+  f.persistence.restoreSession = async () => ({});
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const record = item('no-undo');
+  const tx = await adapter.prepare([record]); await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-rollback-failed'
+    && error.cause?.message === 'dedicated restore creation outcome is uncertain; destination retained');
+  assert.deepEqual(f.removed, []);
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.registry.archivedSessionIds, ['existing']);
 });
 
 test('metadata failure after a Host write removes the session and detaches its workspace', async () => {
@@ -370,6 +463,7 @@ function modernHost(root, { fail = null } = {}) {
         async read() { return { events: stored.events }; },
         async close() { handles.delete(handle); },
       };
+      if (fail === 'bad-handle') delete handle.append;
       handles.add(handle);
       return handle;
     },
@@ -410,6 +504,19 @@ test('modern restore refuses a pre-existing destination before creating a handle
   assert.equal(host.handles.size, 0, 'no write handle is created for a taken destination');
   assert.equal(existsSync(join(directory, 'session.jsonl')), false, 'nothing is written into the taken destination');
   assert.equal(existsSync(join(directory, 'sentinel.txt')), true, 'the pre-existing destination is left untouched');
+  assert.deepEqual(f.registry.archivedSessionIds, ['existing']);
+});
+
+test('modern restore rejects a write handle missing append before writing', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const host = modernHost(f.root, { fail: 'bad-handle' });
+  const record = modernItem('bad-handle');
+  const adapter = createRestoreAdapter({ ...f, persistence: resolvePersistenceCompat(host.raw), tempRoot: f.root });
+  const tx = await adapter.prepare([record]); await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-unsupported' && error.reason === 'write-handle-invalid');
+  assert.equal(host.handles.size, 0);
+  assert.equal(existsSync(join(f.root, 'sessions', record.id)), false);
   assert.deepEqual(f.registry.archivedSessionIds, ['existing']);
 });
 
@@ -605,6 +712,21 @@ test('modern restore rejects same-count event or immutable header mutation befor
   }
 });
 
+test('modern handle writer rejects a non-seeded inherited cut instead of flattening the fork', async t => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const host = modernHost(f.root);
+  const record = modernItem('flat-fork', 2);
+  record.record.source.inheritedEventCount = 1;
+  const adapter = createRestoreAdapter({ ...f, persistence: resolvePersistenceCompat(host.raw), tempRoot: f.root });
+  const tx = await adapter.prepare([record]);
+  await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-unsupported' && error.reason === 'inherited-boundary-missing');
+  assert.equal(existsSync(join(f.root, 'sessions', record.id)), false, 'no session directory is created');
+  assert.deepEqual(f.registry.archivedSessionIds, ['existing']);
+  assert.deepEqual(f.writes, []);
+});
+
 async function commitWithProjection(t, records, projectionCache, titlePublicationTimeoutMs = 40) {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
@@ -695,6 +817,46 @@ test('optional projection cache failures degrade restore without rolling data ba
   }
 });
 
+test('restore reports a fold mismatch without polling the cache', async t => {
+  for (const [label, fold] of [
+    ['title differs', { asOfSeq: 0, values: { title: 'Some other title' } }],
+    ['watermark differs', { asOfSeq: 3, values: { title: 'Title mismatched' } }],
+  ]) {
+    await t.test(label, async t => {
+      const record = item('mismatched');
+      record.record.source.events[0].data.title = 'Title mismatched';
+      let cachedReads = 0;
+      const cache = {
+        coldSnapshot: () => fold,
+        cachedSnapshot: () => { cachedReads += 1; return undefined; },
+      };
+      const { result } = await commitWithProjection(t, [record], cache, 15);
+      assert.deepEqual(result.restored, [record.id]);
+      assert.deepEqual(result.warnings, [{
+        id: record.id,
+        reason: 'title-publication-degraded',
+        detail: 'fold-mismatch',
+      }]);
+      assert.equal(cachedReads, 0, 'a mismatched fold is never polled for publication');
+    });
+  }
+});
+
+test('restore reports a cache read failure during title polling', async t => {
+  const record = item('unreadable-cache');
+  const cache = {
+    coldSnapshot: () => ({ asOfSeq: 0, values: { title: 'Title unreadable-cache' } }),
+    cachedSnapshot: () => { throw new Error('cache read down'); },
+  };
+  const { result } = await commitWithProjection(t, [record], cache, 15);
+  assert.deepEqual(result.restored, [record.id]);
+  assert.deepEqual(result.warnings, [{
+    id: record.id,
+    reason: 'title-publication-degraded',
+    detail: 'cache-read-failed',
+  }]);
+});
+
 for (const legacy of [false, true]) test(`cold title publication preserves a fork cut without activating sessions (legacy=${legacy})`, async t => {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
@@ -780,4 +942,84 @@ test('restore rechecks every staged cwd before the first persistence write', asy
   assert.deepEqual(f.writes, []);
   assert.deepEqual(f.state.archivedSessionIds, ['existing']);
   assert.deepEqual(await readdir(f.root), []);
+});
+
+test('modern handle rejects an inherited count beyond the event log before writing', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const calls = [];
+  const persistence = {
+    locate: async () => { calls.push('locate'); return { path: join(f.root, 's1', 'session.jsonl') }; },
+    createWriteHandle: async () => { calls.push('createWriteHandle'); throw new Error('must not be called'); },
+  };
+  const adapter = createRestoreAdapter({ persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const record = item('s1');
+  record.record.source.inheritedEventCount = 5;
+  const tx = await adapter.prepare([record]);
+  await tx.stage(record);
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-unsupported' && error.reason === 'inherited-boundary-missing');
+  assert.deepEqual(calls, []);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing']);
+});
+
+test('modern handle refuses a pre-existing restore destination before writing', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  await mkdir(join(f.root, 's1'), { recursive: true });
+  const calls = [];
+  const persistence = {
+    locate: async () => { calls.push('locate'); return { path: join(f.root, 's1', 'session.jsonl') }; },
+    createWriteHandle: async () => { calls.push('createWriteHandle'); throw new Error('must not be called'); },
+  };
+  const adapter = createRestoreAdapter({ persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('s1')]);
+  await tx.stage(item('s1'));
+  await assert.rejects(tx.commit(), { code: 'id-conflict', status: 409 });
+  assert.deepEqual(calls, ['locate']);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing']);
+});
+
+test('a dedicated writer resolving without an undo leaves an uncertain retained destination', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  f.persistence.restoreSession = async (payload) => { f.writes.push(payload); return {}; };
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  await tx.stage(item('a'));
+  // No undo was returned, so the write cannot be compensated: the commit
+  // reports the incomplete rollback instead of silently claiming success,
+  // and the destination is retained rather than removed.
+  await assert.rejects(tx.commit(), (error) => error.code === 'restore-rollback-failed'
+    && error.cause?.message === 'dedicated restore creation outcome is uncertain; destination retained');
+  assert.deepEqual(f.removed, []);
+  assert.equal(f.metadata.has('a'), false);
+  assert.deepEqual(f.state.archivedSessionIds, ['existing']);
+});
+
+test('staging rejects a prepared record with the wrong format and cleans up', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  const wrongFormat = item('a');
+  wrongFormat.record.format = 'other/format';
+  await assert.rejects(() => tx.stage(wrongFormat), { code: 'restore-record-invalid' });
+  assert.deepEqual(await readdir(f.root), []);
+  assert.deepEqual(f.writes, []);
+});
+
+test('a workspace without a session list still attaches the restored session', async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  f.registry.list = () => [{
+    id: 'ws-1', title: 'Workspace',
+    attachSession: async (id) => { f.writes.push({ attach: id }); },
+    detachSession: async (id) => { f.writes.push({ detach: id }); },
+  }];
+  const adapter = createRestoreAdapter({ persistence: f.persistence, registry: f.registry, metadataStore: f.metadataStore, tempRoot: f.root });
+  const tx = await adapter.prepare([item('a')]);
+  await tx.stage(item('a'));
+  assert.deepEqual((await tx.commit()).restored, ['a']);
+  assert.ok(f.writes.some((entry) => entry.attach === 'a'));
+  await rm(f.root, { recursive: true, force: true });
 });
