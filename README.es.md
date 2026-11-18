@@ -34,7 +34,7 @@ Archive Management añade a DeepSeek Harness herramientas para buscar, organizar
 - **Copias de seguridad portátiles.** Exporta e importa archivos ZIP con JSON y Markdown. La importación muestra una vista previa antes de escribir datos y omite los ID que ya existen para evitar sobrescrituras.
 - **Origen y ramificaciones de las conversaciones.** La vista de solo lectura **Origins & Branches** muestra de dónde vienen los chats, sus ramificaciones y las relaciones con subagentes en todos los espacios de trabajo, tanto para chats archivados como sin archivar.
 
-> Esta guía corresponde a la versión 2.0.4. Esta versión retira las funciones de recuperación anteriores y permite reintentar de forma explícita las tareas de eliminación permanente.
+> Esta guía corresponde a la versión 2.0.5. Esta versión retira las funciones de recuperación anteriores y permite reintentar de forma explícita las tareas de eliminación permanente.
 
 ## Instalación
 
