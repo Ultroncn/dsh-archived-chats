@@ -16,7 +16,7 @@
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Versión npm" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=Versi%C3%B3n%20npm"></a>
   <a href="#compatibilidad"><img alt="DSH compatible hasta 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-compatible%20hasta%200.2.2--rc.3-2563eb?style=flat"></a>
-  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Descargas npm" src="https://img.shields.io/npm/dt/dsh-archived-chats?style=flat&amp;label=Descargas%20npm"></a>
+  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Descargas npm de los últimos 18 meses" title="Descargas npm de los últimos 18 meses" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=Descargas%20npm"></a>
   <a href="LICENSE"><img alt="Licencia · MIT" src="https://img.shields.io/badge/Licencia-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
 </p>

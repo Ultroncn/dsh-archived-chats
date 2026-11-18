@@ -16,7 +16,7 @@
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm バージョン" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=npm%20%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3"></a>
   <a href="#%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%81%AE%E5%A4%89%E6%9B%B4%E3%81%A8%E4%BA%92%E6%8F%9B%E6%80%A7"><img alt="DSH 対応上限 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-%E5%AF%BE%E5%BF%9C%E4%B8%8A%E9%99%90%200.2.2--rc.3-2563eb?style=flat"></a>
-  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm ダウンロード数" src="https://img.shields.io/npm/dt/dsh-archived-chats?style=flat&amp;label=npm%20%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89%E6%95%B0"></a>
+  <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="過去18か月のnpmダウンロード数" title="過去18か月のnpmダウンロード数" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=npm%20%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89%E6%95%B0"></a>
   <a href="LICENSE"><img alt="ライセンス · MIT" src="https://img.shields.io/badge/%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
 </p>
