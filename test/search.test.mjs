@@ -8,6 +8,7 @@ const {
   projectArchivedMessages,
   searchArchivedSessions,
   searchProjectedMessages,
+  validateSearchSessionIds,
 } = searchModule;
 
 const imageRef = Object.freeze({
@@ -1059,4 +1060,16 @@ test('preview projection caps projected messages at the configured maximum', () 
   const messages = projectArchivedMessages(events);
   assert.equal(messages.length, limit);
   assert.equal(messages.at(-1).seq, limit);
+});
+
+test('search candidate validation bounds explicit batches and rejects bad ids', () => {
+  assert.equal(validateSearchSessionIds(undefined), undefined);
+  assert.deepEqual(validateSearchSessionIds([]), []);
+  assert.deepEqual(validateSearchSessionIds(['a', 'b', 'a']), ['a', 'b']);
+  assert.equal(validateSearchSessionIds(Array.from({ length: 100 }, (_, index) => `s${index}`)).length, 100);
+  assert.throws(() => validateSearchSessionIds('a'), { code: 'search-session-ids-invalid', status: 400 });
+  assert.throws(() => validateSearchSessionIds([null]), { code: 'search-session-ids-invalid', status: 400 });
+  assert.throws(() => validateSearchSessionIds(Array.from({ length: 101 }, (_, index) => `s${index}`)), { code: 'search-session-ids-invalid', status: 400 });
+  assert.throws(() => validateSearchSessionIds(['ok', '  ']), { code: 'search-session-ids-invalid', status: 400 });
+  assert.throws(() => validateSearchSessionIds(['x'.repeat(1025)]), { code: 'search-session-ids-invalid', status: 400 });
 });
