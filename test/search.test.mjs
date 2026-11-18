@@ -390,7 +390,7 @@ test('preview keeps native turn boundaries and counts dispatched process work on
   ]);
   assert.deepEqual(messages[0].turn, {
     key: 'turn:0', startSeq: 0, endSeq: 13, answerSeq: 11, processStartSeq: 3,
-    toolCallCount: 1, messageCount: 1, subagentCount: 1, endReason: 'completed', rowCount: 6,
+    toolCallCount: 1, messageCount: 1, subagentCount: 1, endReason: 'completed', rowCount: 6, durationMs: 13,
   });
   assert.ok(messages.every((message) => message.turn === messages[0].turn));
   assert.deepEqual(messages.map(({ step }) => step), [null, 1, 1, 1, 1, 2]);
@@ -415,6 +415,160 @@ test('preview never mistakes an earlier commentary or terminal tool request for 
   assert.equal(messages[0].turn?.answerSeq, null);
   assert.equal(messages[0].turn.toolCallCount, 0);
   assert.equal(messages[0].turn.messageCount, 2);
+});
+
+test('preview retains retry attempts and the terminal error when no answer was recorded', () => {
+  const retry = {
+    retryId: 'private-retry-identity', turn: 4, step: 1, retry: 1, provider: 'test',
+    policyKey: 'private-policy', mode: 'normal', maxRetries: 3, delayMs: 250,
+    failure: { code: 'RATE_LIMIT', message: 'request,response\n123,private-response', requestId: 'private-request' },
+  };
+  const messages = projectArchivedMessages([
+    logEvent(0, 'turn/start', { turn: 4 }), userEvent(1, 'searchable input'),
+    logEvent(2, 'step/start', { turn: 4, step: 1 }), logEvent(3, 'llm/retry', retry),
+    logEvent(4, 'llm/retry-started', { retryId: retry.retryId, turn: 4, step: 1, retry: 1 }),
+    logEvent(5, 'llm/retry', { ...retry, retry: 2, delayMs: 500 }),
+    logEvent(6, 'step/end', { turn: 4, step: 1 }),
+    logEvent(7, 'turn/end', { turn: 4, reason: { kind: 'error', error: { code: 'TIMEOUT', message: 'The connection timed out.', requestId: 'private-request', stack: 'private-stack' } } }),
+  ]);
+  const page = paginateProjectedMessages(messages, { seq: 5, limit: 2 });
+  assert.equal(page.anchor.status, 'found');
+  assert.deepEqual(messages.map(({ seq, time, step }) => [seq, time, step]), [[1, 1001, null], [3, 1003, 1], [5, 1005, 1], [7, 1007, null]]);
+  assert.deepEqual(page.messages.map(({ segments: [segment] }) => [segment.kind, segment.outcome, segment.attempt, segment.maximum, segment.delayMs, segment.code, segment.text]), [
+    ['retry', 'started', 1, 3, 250, 'RATE_LIMIT', 'Too many requests.'],
+    ['retry', 'cancelled', 2, 3, 500, 'RATE_LIMIT', 'Too many requests.'],
+  ]);
+  assert.deepEqual(messages[3].segments.map(({ kind, outcome, code, text }) => [kind, outcome, code, text]), [
+    ['turn-status', 'error', 'TIMEOUT', 'The connection timed out.'],
+  ]);
+  assert.ok(messages.every(row => row.turn === messages[0].turn));
+  assert.equal(messages[0].turn.answerSeq, null);
+  assert.equal(messages[0].turn.processStartSeq, 3);
+  assert.equal(messages[0].turn.retryCount, 2);
+  assert.equal(messages[0].turn.rowCount, 4);
+  assert.equal(messages[0].turn.durationMs, 7);
+  assert.doesNotMatch(JSON.stringify(messages), /private-/u);
+  assert.deepEqual(searchProjectedMessages(messages, 'requests'), []);
+  assert.equal(searchProjectedMessages(messages, 'searchable')[0].seq, 1);
+});
+
+test('preview retains an interrupted partial answer and isolates malformed retry transitions', () => {
+  const retry = {
+    retryId: 'retry-a', turn: 1, step: 1, retry: 1, provider: 'test', mode: 'always', policyKey: 'test', delayMs: 0,
+    failure: { code: 'AUTH', message: 'Authentication returned key sk-private-secret' },
+  };
+  const messages = projectArchivedMessages([
+    logEvent(0, 'turn/start', { turn: 1 }), logEvent(1, 'step/start', { turn: 1, step: 1 }),
+    logEvent(2, 'llm/retry', { ...retry, retryId: 'invalid', delayMs: Infinity }),
+    logEvent(3, 'llm/retry', retry),
+    logEvent(4, 'llm/retry-started', { retryId: 'wrong-id', turn: 1, step: 1, retry: 1 }),
+    logEvent(5, 'llm/retry-started', { retryId: 'retry-a', turn: 1, step: 2, retry: 1 }),
+    logEvent(6, 'llm/retry-started', { retryId: 'retry-a', turn: 1, step: 1, retry: 1 }),
+    assistantEvent(7, 1, 1, [{ type: 'text', text: 'partial answer' }], { interrupted: true }),
+    logEvent(8, 'step/end', { turn: 1, step: 1 }),
+    logEvent(9, 'turn/end', { turn: 1, reason: { kind: 'interrupted' } }),
+    logEvent(10, 'llm/retry', retry),
+  ]);
+  assert.deepEqual(messages.map(row => row.seq), [3, 7, 9]);
+  assert.equal(messages[0].segments[0].outcome, 'started');
+  assert.equal(messages[0].segments[0].maximum, undefined);
+  assert.equal(messages[0].segments[0].text, '');
+  assert.equal(messages[0].turn.answerSeq, 7);
+  assert.equal(messages[0].turn.durationMs, undefined);
+  assert.equal(messages[2].segments[0].outcome, 'interrupted');
+  assert.doesNotMatch(JSON.stringify(messages), /sk-private-secret|retry-a/u);
+});
+
+test('preview shows a stopped turn even when it never entered a step', () => {
+  const messages = projectArchivedMessages([
+    logEvent(0, 'turn/start', { turn: 4 }),
+    logEvent(1, 'turn/end', { turn: 4, reason: { kind: 'aborted', reason: { kind: 'hook', reason: 'deepseek-account/signed-out' } } }),
+  ]);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].segments[0].kind, 'turn-status');
+  assert.equal(messages[0].segments[0].outcome, 'aborted');
+  assert.equal(messages[0].segments[0].code, 'ACCOUNT_SIGNED_OUT');
+  assert.equal(messages[0].turn.answerSeq, null);
+  assert.equal(messages[0].turn.processStartSeq, null);
+  assert.equal(messages[0].turn.rowCount, 1);
+});
+
+test('preview preserves slash-command notices at their run positions without exposing payloads', () => {
+  const messages = projectArchivedMessages([
+    logEvent(0, 'command/run', { commandId: 'private-id', name: 'compact', args: ' /private/input', source: { kind: 'user' } }),
+    userEvent(1, 'between run and done'),
+    logEvent(2, 'command/run', { commandId: 'other-id', name: 'test-tool' }),
+    logEvent(3, 'command/done', { commandId: 'private-id', kind: 'success', text: '/private/result', sourceEventSeq: 0 }),
+    logEvent(4, 'command/done', { commandId: 'older-id', kind: 'error', text: '/private/error' }),
+    logEvent(5, 'command/run', { commandId: 'bad-id', name: '/invalid command' }),
+  ]);
+  assert.deepEqual(messages.map(row => row.seq), [0, 1, 2, 4]);
+  assert.deepEqual(messages.filter(row => row.segments[0].kind === 'command').map(({ segments: [segment] }) => [segment.name, segment.outcome]), [
+    ['compact', 'success'], ['test-tool', 'running'], [undefined, 'error'],
+  ]);
+  assert.doesNotMatch(JSON.stringify(messages), /private|older-id|other-id/u);
+  assert.equal(paginateProjectedMessages(messages, { seq: 0 }).anchor.status, 'found');
+});
+
+test('preview correlates native first-class tool results and preserves structured image authorization', () => {
+  const messages = projectArchivedMessages([
+    assistantEvent(0, 1, 1, [{ type: 'tool-call', id: 'call-native', name: 'read', arguments: '{}' }]),
+    logEvent(1, 'tool/result', {
+      turn: 1, step: 1,
+      message: { id: 'result-native', role: 'tool', source: { kind: 'tool', callId: 'call-native' }, toolCallId: 'call-native', isError: true,
+        content: [{ type: 'text', text: 'Native failure body' }, { type: 'image', attachment: imageRef }] },
+      error: { name: 'Error', code: 'TOOL_EXECUTION_FAILED', reason: 'private tool detail' },
+      meta: { private: 'metadata' },
+    }, 'append'),
+  ]);
+  const [result, image] = messages[1].segments;
+  assert.equal(messages[1].role, 'tool');
+  assert.equal(result.kind, 'tool-result');
+  assert.equal(result.toolCallId, 'call-native');
+  assert.equal(result.text, 'Native failure body');
+  assert.equal(result.isError, true);
+  assert.equal(image.attachment.attachmentId, imageRef.attachmentId);
+  assert.equal(searchModule.findProjectedImage(messages, imageRef.attachmentId)?.mediaType, imageRef.mediaType);
+  assert.equal(searchProjectedMessages(messages, 'native failure')[0].seq, 1);
+  assert.doesNotMatch(JSON.stringify(messages), /private/u);
+});
+
+test('preview retains additional native tool content across an image and a segment limit', () => {
+  const first = `first ${'x'.repeat(256 * 1024 - 6)}`;
+  const messages = projectArchivedMessages([
+    logEvent(1, 'tool/result', {
+      turn: 1, step: 1,
+      message: { role: 'tool', toolCallId: 'native', source: { kind: 'tool', callId: 'native' },
+        content: [{ type: 'text', text: first }, { type: 'text', text: 'before image' },
+          { type: 'image', attachment: imageRef }, { type: 'text', text: 'after image' }] },
+    }, 'append'),
+  ]);
+  const [message] = messages;
+  assert.deepEqual(message.segments.map(segment => segment.kind), ['tool-result', 'text', 'image', 'text']);
+  assert.equal(message.segments[0].text, first);
+  assert.equal(message.segments[1].text, 'before image');
+  assert.equal(message.segments[3].text, 'after image');
+  assert.equal(searchProjectedMessages(messages, 'after image')[0].seq, 1);
+});
+
+test('preview displays audited Host summaries and keeps unstructured failure bodies private', () => {
+  const cases = [
+    ['TRANSPORT', 'DeepSeek Messages transport failed', 'DeepSeek Messages transport failed'],
+    ['TIMEOUT', 'DeepSeek Messages stream idle timeout', 'DeepSeek Messages stream idle timeout'],
+    ['TRANSPORT', 'DeepSeek Messages transport failed at https://private-user:private-pass@example.invalid', ''],
+    ['UNKNOWN', '123,private-payload,project-details', ''],
+    ['UNKNOWN', 'Provider returned Authorization: Basic private-credential', ''],
+    ['UNKNOWN', 'DeepSeek Messages transport failed', ''],
+    ['path/to/invalid/code', 'DeepSeek Messages transport failed', ''],
+  ];
+  const messages = projectArchivedMessages(cases.flatMap(([code, message], index) => [
+    logEvent(index * 2, 'turn/start', { turn: index + 1 }),
+    logEvent(index * 2 + 1, 'turn/end', { turn: index + 1, reason: { kind: 'error', error: { code, message } } }),
+  ]));
+  const segments = messages.map(row => row.segments[0]);
+  assert.deepEqual(segments.map(segment => segment.text), cases.map(([, , expected]) => expected));
+  assert.deepEqual(segments.map(segment => segment.code), ['TRANSPORT', 'TIMEOUT', 'TRANSPORT', 'UNKNOWN', 'UNKNOWN', 'UNKNOWN', undefined]);
+  assert.doesNotMatch(JSON.stringify(messages), /private-|example\.invalid|path\/to/u);
 });
 
 test('preview withholds folding for missing boundaries and retains interrupted answer status', () => {
@@ -461,6 +615,7 @@ test('preview leaves torn event windows unfolded even when end markers survived'
   ]);
   assert.equal(messages[0].turn.endSeq, 5);
   assert.equal(messages[0].turn.answerSeq, null);
+  assert.equal(messages[0].turn.processStartSeq, null);
 });
 
 test('preview exposes bounded producer labels without serializing private source payloads', () => {
