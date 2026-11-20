@@ -4,6 +4,18 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 2.0.7 — 2026-11-21
+
+### 中文
+
+- 修复归档管理在 DSH `0.2.2-rc.5` 的插件市场中被标为不兼容的问题。最低宿主声明为 `0.1.0-rc.7`，`0.2.2-rc.1` 起的会话组件使用开放版本范围。
+- 保留原有旧宿主的会话依赖范围。原生集成测试覆盖会话管理和备份恢复。
+
+### English
+
+- Fix the marketplace excluding Archive Management as incompatible on DSH `0.2.2-rc.5`. Declare `0.1.0-rc.7` as the minimum Host version and use an open session peer range from `0.2.2-rc.1`.
+- Preserve the existing session peer ranges for older Hosts and verify session management and backup restoration with native integration tests.
+
 ## 2.0.6 — 2026-11-19
 
 ### 中文

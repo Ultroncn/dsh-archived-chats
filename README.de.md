@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm-Version" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=npm-Version"></a>
-  <a href="#kompatibilit%C3%A4t"><img alt="DSH bis 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-bis%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="#kompatibilit%C3%A4t"><img alt="DSH >=0.1.0-rc.7" src="https://img.shields.io/badge/DSH-%3E%3D0.1.0--rc.7-2563eb?style=flat"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm-Downloads in den letzten 18 Monaten" title="npm-Downloads in den letzten 18 Monaten" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=npm-Downloads"></a>
   <a href="LICENSE"><img alt="Lizenz · MIT" src="https://img.shields.io/badge/Lizenz-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
@@ -34,7 +34,7 @@ Mit der Archivverwaltung können Sie Unterhaltungen in DeepSeek Harness durchsuc
 - **ZIP-Sicherungen.** Exportieren und importieren Sie Chats als ZIP mit JSON und Markdown. Vor dem Import sehen Sie eine Vorschau. Bereits vorhandene IDs werden übersprungen, damit bestehende Einträge erhalten bleiben.
 - **Herkunft und Verzweigungen.** Die schreibgeschützte Ansicht **Origins & Branches** zeigt Quellchats, Abzweigungen und Subagenten über alle Arbeitsbereiche und Archivstatus hinweg.
 
-> Diese Anleitung beschreibt Version 2.0.6. Die früheren Wiederherstellungsfunktionen wurden entfernt. Fehlgeschlagene Aufgaben zum endgültigen Löschen lassen sich gezielt wiederholen.
+> Diese Anleitung beschreibt Version 2.0.7. Die früheren Wiederherstellungsfunktionen wurden entfernt. Fehlgeschlagene Aufgaben zum endgültigen Löschen lassen sich gezielt wiederholen.
 
 ## Installieren und öffnen
 
@@ -92,7 +92,7 @@ Die Plugin-Daten liegen unter `$DSH_HOME/plugin-data/archived-chats/`. Die autom
 
 ## Kompatibilität
 
-Der deklarierte DSH-Versionsbereich lautet `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3`. Welche Funktionen verfügbar sind, hängt vom aktiven Host ab. Native Integrationstests decken die offiziellen Backends `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` und `0.2.2-rc.3` ab. Die CI prüft diese Host-Matrix unter macOS, Windows und Linux.
+Der deklarierte DSH-Versionsbereich lautet `>=0.1.0-rc.7`. Welche Funktionen verfügbar sind, hängt vom aktiven Host ab. Native Integrationstests decken die offiziellen Backends `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` und `0.2.2-rc.3` ab. Die CI prüft diese Host-Matrix unter macOS, Windows und Linux.
 
 Die Chatliste sowie das Archivieren und Wiederöffnen von Chats nutzen offizielle Host-Funktionen. Für die endgültige Löschung koordiniert das Plugin den Lebenszyklus der Host-Sitzungen und die zugehörigen Speicherorte. [Kompatibilität und Einschränkungen](docs/USER_GUIDE.md#compatibility-and-limits)
 

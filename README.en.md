@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=npm%20version"></a>
-  <a href="#compatibility"><img alt="DSH supports up to 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-supports%20up%20to%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="#compatibility"><img alt="DSH >=0.1.0-rc.7" src="https://img.shields.io/badge/DSH-%3E%3D0.1.0--rc.7-2563eb?style=flat"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm downloads in the last 18 months" title="npm downloads in the last 18 months" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=npm%20downloads"></a>
   <a href="LICENSE"><img alt="License · MIT" src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
@@ -34,7 +34,7 @@ Archive Management adds conversation search, organization and backups to DeepSee
 - **Portable backups:** export and import JSON + Markdown ZIPs; imports preview before writing and skip existing IDs to avoid overwrites.
 - **Conversation lineage:** read-only Origins & Branches view traces sources, forks and subagent relationships across all workspaces, including archived and unarchived chats.
 
-> This document describes version 2.0.6. Previous recovery features are removed, with explicit retries for permanent-deletion tasks.
+> This document describes version 2.0.7. Previous recovery features are removed, with explicit retries for permanent-deletion tasks.
 
 ## Install and open
 
@@ -93,7 +93,7 @@ Installing an older release can restore its earlier cleanup rules. Before downgr
 
 ## Compatibility
 
-The declared range is DSH `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3`; features still depend on Host capabilities. Native integration tests cover official `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3` backends; CI runs the Host matrix on macOS, Windows and Linux.
+The declared range is DSH `>=0.1.0-rc.7`; features still depend on Host capabilities. Native integration tests cover official `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3` backends; CI runs the Host matrix on macOS, Windows and Linux.
 
 Archive, unarchive and inventory use official capabilities. Permanent deletion coordinates Host session lifecycle and storage locations rather than calling one unified public deletion API. See [compatibility and limits](docs/USER_GUIDE.md#compatibility-and-limits).
 
