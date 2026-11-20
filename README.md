@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm 版本" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=npm%20%E7%89%88%E6%9C%AC"></a>
-  <a href="#%E5%85%BC%E5%AE%B9%E6%80%A7"><img alt="DSH 支持至 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-%E6%94%AF%E6%8C%81%E8%87%B3%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="#%E5%85%BC%E5%AE%B9%E6%80%A7"><img alt="DSH >=0.1.0-rc.7" src="https://img.shields.io/badge/DSH-%3E%3D0.1.0--rc.7-2563eb?style=flat"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm 近 18 个月下载量" title="npm 近 18 个月下载量" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=npm%20%E4%B8%8B%E8%BD%BD%E9%87%8F"></a>
   <a href="LICENSE"><img alt="许可证 · MIT" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
@@ -34,7 +34,7 @@
 - **可迁移备份：** 导出和导入 JSON + Markdown ZIP；导入前预览，跳过已有 ID，不覆盖现有数据。
 - **会话溯源：** 只读的「来源与分支」视图查看所有工作区中已归档、未归档会话的来源、分叉和子代理关系。
 
-> 本文描述 2.0.6，旧恢复功能已移除，永久删除支持任务重试。
+> 本文描述 2.0.7，旧恢复功能已移除，永久删除支持任务重试。
 
 <a name="install-and-open"></a>
 
@@ -107,7 +107,7 @@ dsh plugin --profile web update dsh-archived-chats
 
 ## 兼容性
 
-声明范围为 DSH `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3`，具体能力仍取决于 Host。原生集成测试覆盖官方 `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1` 与 `0.2.2-rc.3` 后端；CI 在 macOS、Windows 和 Linux 上运行 Host 测试矩阵。
+声明范围为 DSH `>=0.1.0-rc.7`，具体能力仍取决于 Host。原生集成测试覆盖官方 `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1` 与 `0.2.2-rc.3` 后端；CI 在 macOS、Windows 和 Linux 上运行 Host 测试矩阵。
 
 归档、取消归档、列表读取以官方能力为基础。永久删除由插件协调会话生命周期和存储位置完成，并非调用一个官方统一删除接口。详见[兼容性与限制](docs/USER_GUIDE.zh-CN.md#兼容性与限制)。
 

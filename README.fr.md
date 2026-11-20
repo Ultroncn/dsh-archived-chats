@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Version npm" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=Version%20npm"></a>
-  <a href="#compatibilit%C3%A9"><img alt="DSH compatible jusqu’à 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-compatible%20jusqu%E2%80%99%C3%A0%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="#compatibilit%C3%A9"><img alt="DSH >=0.1.0-rc.7" src="https://img.shields.io/badge/DSH-%3E%3D0.1.0--rc.7-2563eb?style=flat"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Téléchargements npm sur les 18 derniers mois" title="Téléchargements npm sur les 18 derniers mois" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=T%C3%A9l%C3%A9chargements%20npm"></a>
   <a href="LICENSE"><img alt="Licence · MIT" src="https://img.shields.io/badge/Licence-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
@@ -34,7 +34,7 @@ La gestion des archives permet de rechercher, d’organiser et de sauvegarder le
 - **Sauvegardes ZIP.** Exportez et importez des archives ZIP contenant du JSON et du Markdown. Un aperçu précède l’import et les identifiants déjà présents sont ignorés pour préserver les conversations existantes.
 - **Origines et branches.** La vue **Origins & Branches**, en lecture seule, retrace les conversations sources, les branches et les liens avec les sous-agents dans tous les espaces de travail, quel que soit le statut d’archivage.
 
-> Ce document décrit la version 2.0.6. Les anciennes fonctions de récupération ont été supprimées. Vous pouvez relancer explicitement une tâche de suppression définitive qui a échoué.
+> Ce document décrit la version 2.0.7. Les anciennes fonctions de récupération ont été supprimées. Vous pouvez relancer explicitement une tâche de suppression définitive qui a échoué.
 
 ## Installer et ouvrir
 
@@ -92,7 +92,7 @@ Les données du module se trouvent dans `$DSH_HOME/plugin-data/archived-chats/`.
 
 ## Compatibilité
 
-La plage de versions DSH déclarée est `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3`. Les fonctionnalités disponibles dépendent de l’hôte actif. Les tests d’intégration natifs couvrent les backends officiels `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` et `0.2.2-rc.3`. L’intégration continue exécute cette matrice sous macOS, Windows et Linux.
+La plage de versions DSH déclarée est `>=0.1.0-rc.7`. Les fonctionnalités disponibles dépendent de l’hôte actif. Les tests d’intégration natifs couvrent les backends officiels `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` et `0.2.2-rc.3`. L’intégration continue exécute cette matrice sous macOS, Windows et Linux.
 
 L’archivage, le désarchivage et le recensement des conversations utilisent les fonctionnalités officielles de l’hôte. Pour la suppression définitive, le module coordonne le cycle de vie des sessions et leurs emplacements de stockage. [Compatibilité et limites](docs/USER_GUIDE.md#compatibility-and-limits)
 

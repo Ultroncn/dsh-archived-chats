@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Versão npm" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=Vers%C3%A3o%20npm"></a>
-  <a href="#compatibilidade"><img alt="DSH compatível até 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-compat%C3%ADvel%20at%C3%A9%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="#compatibilidade"><img alt="DSH >=0.1.0-rc.7" src="https://img.shields.io/badge/DSH-%3E%3D0.1.0--rc.7-2563eb?style=flat"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Downloads no npm nos últimos 18 meses" title="Downloads no npm nos últimos 18 meses" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=Downloads%20no%20npm"></a>
   <a href="LICENSE"><img alt="Licença · MIT" src="https://img.shields.io/badge/Licen%C3%A7a-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
@@ -34,7 +34,7 @@ O Archive Management adiciona ao DeepSeek Harness ferramentas para buscar, organ
 - **Backups portáteis.** Exporte e importe arquivos ZIP com JSON e Markdown. A importação exibe uma prévia antes de gravar os dados e pula os IDs que já existem para evitar sobrescritas.
 - **Origem e ramificações das conversas.** A visualização somente para leitura **Origins & Branches** mostra origens, ramificações e vínculos com subagentes em todos os espaços de trabalho, tanto para conversas arquivadas quanto para não arquivadas.
 
-> Este guia se refere à versão 2.0.6. Essa versão remove os recursos anteriores de recuperação e permite repetir explicitamente as tarefas de exclusão permanente.
+> Este guia se refere à versão 2.0.7. Essa versão remove os recursos anteriores de recuperação e permite repetir explicitamente as tarefas de exclusão permanente.
 
 ## Instalação
 
@@ -92,7 +92,7 @@ Instalar uma versão anterior pode reativar as regras de limpeza daquela versão
 
 ## Compatibilidade
 
-A faixa declarada de versões do DSH é `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3`. Os recursos disponíveis dependem do que o Host oferece. Os testes de integração nativa cobrem os backends oficiais `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` e `0.2.2-rc.3`. A CI executa a matriz de versões do Host no macOS, Windows e Linux.
+A faixa declarada de versões do DSH é `>=0.1.0-rc.7`. Os recursos disponíveis dependem do que o Host oferece. Os testes de integração nativa cobrem os backends oficiais `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` e `0.2.2-rc.3`. A CI executa a matriz de versões do Host no macOS, Windows e Linux.
 
 O arquivamento, o desarquivamento e o inventário usam recursos oficiais. A exclusão permanente coordena o ciclo de vida das sessões do Host com seus locais de armazenamento. Consulte [compatibilidade e limites](docs/USER_GUIDE.md#compatibility-and-limits).
 

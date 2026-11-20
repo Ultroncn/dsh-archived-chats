@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="npm バージョン" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=npm%20%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3"></a>
-  <a href="#%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%81%AE%E5%A4%89%E6%9B%B4%E3%81%A8%E4%BA%92%E6%8F%9B%E6%80%A7"><img alt="DSH 対応上限 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-%E5%AF%BE%E5%BF%9C%E4%B8%8A%E9%99%90%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="#%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3%E3%81%AE%E5%A4%89%E6%9B%B4%E3%81%A8%E4%BA%92%E6%8F%9B%E6%80%A7"><img alt="DSH >=0.1.0-rc.7" src="https://img.shields.io/badge/DSH-%3E%3D0.1.0--rc.7-2563eb?style=flat"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="過去18か月のnpmダウンロード数" title="過去18か月のnpmダウンロード数" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=npm%20%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89%E6%95%B0"></a>
   <a href="LICENSE"><img alt="ライセンス · MIT" src="https://img.shields.io/badge/%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
@@ -34,7 +34,7 @@ Archive Management は、DeepSeek Harness にチャットの検索、整理、�
 - **持ち運べるバックアップ** — JSON と Markdown を含む ZIP をエクスポートおよびインポートできます。インポートは書き込み前にプレビューでき、既存の ID はスキップされるため上書きされません。
 - **チャットの系譜** — 読み取り専用の **Origins & Branches** では、ワークスペースやアーカイブ状態を問わず、チャットの起点、分岐、サブエージェントとの関係を確認できます。
 
-> この文書はバージョン 2.0.6 を対象としています。従来の復旧機能は廃止されました。完了していない完全削除タスクは、ユーザーの操作で再試行できます。
+> この文書はバージョン 2.0.7 を対象としています。従来の復旧機能は廃止されました。完了していない完全削除タスクは、ユーザーの操作で再試行できます。
 
 ## インストールと起動
 
@@ -90,7 +90,7 @@ dsh plugin --profile web update dsh-archived-chats
 
 旧バージョンに戻すと、当時のクリーンアップルールも再び適用される場合があります。ダウングレードの前にデータ全体をバックアップし、未完了のタスクとデータ形式の互換性を確認してください。
 
-宣言されている DSH の対応範囲は `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3` です。各機能の利用可否はホストの対応状況によります。ネイティブ統合テストは公式の `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.3` のバックエンドを対象とし、CI は macOS、Windows、Linux でホストのテストを実行します。
+宣言されている DSH の対応範囲は `>=0.1.0-rc.7` です。各機能の利用可否はホストの対応状況によります。ネイティブ統合テストは公式の `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.3` のバックエンドを対象とし、CI は macOS、Windows、Linux でホストのテストを実行します。
 
 アーカイブ、アーカイブ解除、チャット一覧の取得にはホストの公式機能を使います。完全削除はホストのセッションライフサイクルと保存先を連携させて処理します。詳細は[互換性と制限](docs/USER_GUIDE.md#compatibility-and-limits)を参照してください。
 

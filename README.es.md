@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Versión npm" src="https://img.shields.io/npm/v/dsh-archived-chats?style=flat&amp;label=Versi%C3%B3n%20npm"></a>
-  <a href="#compatibilidad"><img alt="DSH compatible hasta 0.2.2-rc.3" src="https://img.shields.io/badge/DSH-compatible%20hasta%200.2.2--rc.3-2563eb?style=flat"></a>
+  <a href="#compatibilidad"><img alt="DSH >=0.1.0-rc.7" src="https://img.shields.io/badge/DSH-%3E%3D0.1.0--rc.7-2563eb?style=flat"></a>
   <a href="https://www.npmjs.com/package/dsh-archived-chats"><img alt="Descargas npm de los últimos 18 meses" title="Descargas npm de los últimos 18 meses" src="https://img.shields.io/npm/d18m/dsh-archived-chats?style=flat&amp;label=Descargas%20npm"></a>
   <a href="LICENSE"><img alt="Licencia · MIT" src="https://img.shields.io/badge/Licencia-MIT-2ea44f?style=flat"></a>
   <a href="https://dsh-insights.com/p/Ultroncn/dsh-archived-chats/"><img alt="DSH Insights" src="https://dsh-insights.com/badge/Ultroncn/dsh-archived-chats.svg"></a>
@@ -34,7 +34,7 @@ Archive Management añade a DeepSeek Harness herramientas para buscar, organizar
 - **Copias de seguridad portátiles.** Exporta e importa archivos ZIP con JSON y Markdown. La importación muestra una vista previa antes de escribir datos y omite los ID que ya existen para evitar sobrescrituras.
 - **Origen y ramificaciones de las conversaciones.** La vista de solo lectura **Origins & Branches** muestra de dónde vienen los chats, sus ramificaciones y las relaciones con subagentes en todos los espacios de trabajo, tanto para chats archivados como sin archivar.
 
-> Esta guía corresponde a la versión 2.0.6. Esta versión retira las funciones de recuperación anteriores y permite reintentar de forma explícita las tareas de eliminación permanente.
+> Esta guía corresponde a la versión 2.0.7. Esta versión retira las funciones de recuperación anteriores y permite reintentar de forma explícita las tareas de eliminación permanente.
 
 ## Instalación
 
@@ -92,7 +92,7 @@ Instalar una versión anterior puede reactivar sus reglas de limpieza. Antes de 
 
 ## Compatibilidad
 
-El rango declarado de DSH es `>=0.1.0-rc.7 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3`. Las funciones disponibles dependen de las capacidades del Host. Las pruebas de integración nativa cubren los backends oficiales `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` y `0.2.2-rc.3`. La CI ejecuta la matriz de versiones del Host en macOS, Windows y Linux.
+El rango declarado de DSH es `>=0.1.0-rc.7`. Las funciones disponibles dependen de las capacidades del Host. Las pruebas de integración nativa cubren los backends oficiales `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` y `0.2.2-rc.3`. La CI ejecuta la matriz de versiones del Host en macOS, Windows y Linux.
 
 El archivado, el desarchivado y el inventario utilizan funciones oficiales. La eliminación permanente coordina el ciclo de vida de las sesiones del Host con sus ubicaciones de almacenamiento. Consulta [compatibilidad y límites](docs/USER_GUIDE.md#compatibility-and-limits).
 
