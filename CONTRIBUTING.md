@@ -51,7 +51,7 @@
 
 ## 本地开发
 
-要求 Node.js 18 或 24。克隆仓库后运行：
+普通测试使用 Node.js 18 或 24；完整原生矩阵使用 Node.js 24.22.3，满足 `0.2.3-alpha.2` 的 `^24.22.3 || >=26.13.1` 要求。克隆仓库后运行：
 
 ```sh
 npm ci
@@ -66,6 +66,17 @@ npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --inc
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm ci --prefix test/fixtures/native-host-0.2.2-rc.3 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.3
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.2 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.2
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.5
+npm ci --prefix test/fixtures/native-host-0.2.3-alpha.2 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.3-alpha.2
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.3-alpha.2 --test-file test/sqlite-host.test.mjs --expected-tests 4
+npm ci --prefix test/fixtures/client-host-0.2.2-rc.5 --ignore-scripts --include=optional
+node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-0.2.2-rc.5
+npm ci --prefix test/fixtures/client-host-0.2.3-alpha.2 --ignore-scripts --include=optional
+node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-0.2.3-alpha.2
 npm pack --dry-run --json
 ```
 
@@ -85,7 +96,7 @@ PR 应保持单一目的，并说明用户可见变化、兼容性影响、数�
 
 ## English summary
 
-Use Discussions for questions, Issues for reproducible bugs, and private vulnerability reporting for security problems. Keep pull requests focused, add tests, update both language documents when user behavior changes, and run `npm test`, the mandatory native Host integration commands for all five pinned fixtures, and `npm pack --dry-run --json`. Never commit local plugin data, conversations, attachments, credentials, logs, or temporary files.
+Use Discussions for questions, Issues for reproducible bugs, and private vulnerability reporting for security problems. Keep pull requests focused, add tests, update both language documents when user behavior changes, and run `npm test`, the mandatory native Host integration commands for all eight pinned fixtures, and `npm pack --dry-run --json`. Never commit local plugin data, conversations, attachments, credentials, logs, or temporary files.
 
 ### Branch, commit, and pull request naming
 
