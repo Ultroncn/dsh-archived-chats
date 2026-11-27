@@ -1,0 +1,42 @@
+{
+  "name": "dsh-archived-chats-client-host-0.2.3-alpha.2-fixture",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^24.22.3 || >=26.13.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.2.0-alpha.1",
+    "@deepseek-ai/dsh-client-locale": "0.2.3-alpha.2",
+    "@deepseek-ai/dsh-client-modules": "0.2.3-alpha.2",
+    "@deepseek-ai/dsh-client-store": "0.2.3-alpha.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.3-alpha.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.3-alpha.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.3-alpha.2",
+    "@deepseek-ai/dsh-util-code-language": "0.2.3-alpha.2",
+    "@deepseek-ai/dsh-util-workspace-path": "0.2.3-alpha.2",
+    "@shikijs/langs": "^4.4.3",
+    "anser": "^2.3.5",
+    "clsx": "^2.0.0",
+    "diff": "^9.0.0",
+    "immer": "^10.1.1",
+    "katex": "^0.18.7",
+    "mdast-util-from-markdown": "^2.1.0",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-math": "^3.0.0",
+    "micromark-core-commonmark": "^2.0.3",
+    "micromark-extension-gfm": "^3.0.0",
+    "micromark-extension-math": "^3.1.0",
+    "micromark-factory-space": "^2.0.1",
+    "micromark-util-character": "^2.1.1",
+    "micromark-util-classify-character": "^2.0.1",
+    "micromark-util-decode-string": "^2.0.1",
+    "micromark-util-sanitize-uri": "^2.0.1",
+    "micromark-util-symbol": "^2.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "shiki": "^4.4.3",
+    "simple-icons": "16.31.0",
+    "zustand": "~4.5.7"
+  }
+}

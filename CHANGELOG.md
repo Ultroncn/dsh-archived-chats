@@ -4,6 +4,22 @@
 
 Entries describe behavior at each release, not necessarily current behavior. Consult the READMEs and user guides for current usage.
 
+## 2.0.8 — 2026-11-27
+
+### 中文
+
+- 修复 DSH `0.2.3-alpha.2` 的安装依赖冲突，明确接受该版本及其 Cordis `4.2.0-alpha.1`，保留旧宿主范围；开发依赖同步至 `0.2.2-rc.5`。
+- 补齐官方 `0.2.2-rc.2`、`0.2.2-rc.5` 和 `0.2.3-alpha.2` 固定版本后端测试，纳入三个平台的 CI；每个版本验证 9 项归档、备份恢复及删除保护行为。原生矩阵使用 Node.js `24.22.3`。
+- 为 `rc.5` 和 `alpha.2` 增加基于已发布客户端包的 4 项契约测试，覆盖模块加载、原生控件、设置注册和卸载，并纳入 CI。
+- 新增 4 项真实 SQLite 后端检查，覆盖读取、归档/取消归档、ZIP 导出和分支继承边界；无法提供写入前回滚位置的后端不再被判定为可恢复。SQLite 的 ZIP 恢复及永久删除会拒绝执行，保留原数据；默认 JSONL 后端继续支持这些操作。
+
+### English
+
+- Fix dependency resolution on DSH `0.2.3-alpha.2` by explicitly accepting this Host and Cordis `4.2.0-alpha.1`, preserving older Host ranges. Align the development dependency with `0.2.2-rc.5`.
+- Add pinned official `0.2.2-rc.2`, `0.2.2-rc.5` and `0.2.3-alpha.2` backend fixtures to CI on all three platforms. Each fixture checks nine archive, backup/restore and deletion-safety behaviors. Run the native matrix on Node.js `24.22.3`.
+- Add four contract tests per published `rc.5` and `alpha.2` client package set for module loading, native controls, settings registration and disposal, enforced in CI.
+- Add four real SQLite backend checks for reads, archive/unarchive, ZIP export and inherited fork boundaries. Backends without a pre-write rollback location no longer advertise a restorable writer. ZIP restore and permanent deletion are refused on SQLite, preserving existing data; the default JSONL backend continues to support them.
+
 ## 2.0.7 — 2026-11-21
 
 ### 中文

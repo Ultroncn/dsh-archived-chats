@@ -103,6 +103,7 @@ test('forwards createWriteHandle to modern persistence after validating the head
   const raw = {
     async list() { return []; },
     async open() { throw new Error('not used'); },
+    async locate() { return { kind: 'jsonl', path: '/sessions/ordinary/session.jsonl' }; },
     async create(...args) { created.push(args); return { marker: 'write-handle' }; },
   };
   const view = resolvePersistenceCompat(raw);
@@ -114,6 +115,22 @@ test('forwards createWriteHandle to modern persistence after validating the head
   await assert.rejects(view.createWriteHandle({ ...HEADER, version: 1 }, {}),
     { code: 'persistence-response-invalid' });
   assert.equal(created.length, 1, 'an invalid header never reaches the backend');
+});
+
+test('a stat-only backend remains readable without advertising a restorable writer', async () => {
+  const snapshot = { header: HEADER, revision: 'stored-1' };
+  const view = resolvePersistenceCompat({
+    async list() { return [snapshot]; },
+    async stat() { return snapshot; },
+    async open() {
+      return { header: HEADER, inheritedEventCount: 0, async read() { return { events: [] }; }, async close() {} };
+    },
+    async create() { assert.fail('an unsupported restore must never write data'); },
+  });
+  assert.equal(view.createWriteHandle, undefined);
+  assert.deepEqual(await view.list(), [HEADER]);
+  assert.deepEqual((await view.readSession(HEADER.id)).events, []);
+  assert.equal(await view.locate(HEADER), undefined);
 });
 
 test('title-only reads return the last non-empty session title', async () => {

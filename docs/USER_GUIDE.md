@@ -4,7 +4,7 @@ Current source removes the previous recovery UI and keeps explicit permanent-del
 
 English · [简体中文](USER_GUIDE.zh-CN.md) · [Back to README](../README.en.md)
 
-Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 2.0.7, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
+Archive Management provides a place to browse and manage DSH's archived chats, plus workspace bulk archiving. This document describes version 2.0.8, with native integration coverage for DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2`, `0.2.2-rc.3`, `0.2.2-rc.5` and `0.2.3-alpha.2`. See the [changelog](../CHANGELOG.md) for release history. For interfaces and data formats, see the [architecture](ARCHITECTURE.en.md).
 
 The interface has four tabs, Archived, Unarchived, Origins & Branches, and About.
 
@@ -51,6 +51,8 @@ See [search scope](#archive-and-find-chats) and [export and import](#export-and-
 ## Archive and find chats
 
 Use DSH's normal session menu to archive one chat. The Host owns its success notice and Undo action; the plugin adds no second notice and does not replace the official archive method. The plugin groups archived chats by workspace.
+
+Archiving all chats in a workspace leaves the workspace itself in place. The plugin does not move existing chats between workspaces or hide, archive and restore entire workspaces; workspace grouping is for browsing only.
 
 The **All workspaces** menu in both lists shows folder icons and includes **Ungrouped** and **Automation tasks**. Ungrouped follows official workspace membership, rather than titles or stale directories. Automation tasks matches session bindings returned by the official `schedule.catalog()`, including retained active and ended tasks. Deleted tasks stop matching; this is not a permanent historical session type. If the Host has no schedule service or its catalog cannot be read, the option is disabled with an explanation while ordinary chats remain available.
 
@@ -201,11 +203,13 @@ Upgrades preserve archives, tags, notes, and pending permanent-deletion tasks. P
 
 ## Compatibility and limits
 
+The default JSONL backend covers archive/unarchive, ZIP export/restore, permanent deletion and failure rollback. `0.2.3-alpha.2` requires Node.js `^24.22.3 || >=26.13.1`. The optional SQLite backend is tested for inventory, preview, archive/unarchive and ZIP export. The Host has no rollback-safe import or per-session deletion API for this shared store, so the plugin refuses ZIP restore and permanent deletion while preserving existing data and backups. Native tests use real persistence components with simulated workspace/routes; they are not a full Web UI acceptance test.
+
 - **Settings closes unexpectedly (known Host issue):** On DSH `0.2.1-rc.2`, archiving the current chat while initial setup is incomplete can trigger onboarding and close Settings. Reported upstream in [#10596](https://github.com/deepseek-ai/deepseek-harness/discussions/10596). This does not by itself mean archiving failed; reopen Settings to check. The plugin does not include a Host fix.
 
 Features depend on public Host capabilities, not just a version number:
 
-The declared DSH `>=0.1.0-rc.7` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all five pinned official Host backends, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3` (nine integration cases each) and package checks, including the v4 session format.
+The declared DSH `>=0.1.0-rc.7 || 0.2.3-alpha.2` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24.22.3 on Ubuntu, macOS, and Windows; the Node.js 24.22.3 matrix requires all eight pinned official Host backends, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2`, `0.2.2-rc.3`, `0.2.2-rc.5` and `0.2.3-alpha.2` (nine integration cases each) and package checks, including the v4 session format.
 
 ## Local data and uninstall
 

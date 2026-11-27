@@ -2,7 +2,9 @@
 
 English · [中文](ARCHITECTURE.md) · [User guide](USER_GUIDE.md)
 
-This document describes the interfaces and behavior of version 2.0.7. Native integration tests cover DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
+This document describes the interfaces and behavior of version 2.0.8. Native integration tests cover DSH `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2`, `0.2.2-rc.3`, `0.2.2-rc.5` and `0.2.3-alpha.2`. See the [changelog](../CHANGELOG.md) for release history. Runtime code is the authority for interfaces and behavior; user-facing documentation should agree with it.
+
+The default JSONL backend covers archive/unarchive, ZIP export/restore, permanent deletion and failure rollback. `0.2.3-alpha.2` requires Node.js `^24.22.3 || >=26.13.1`. The optional SQLite backend is tested for inventory, preview, archive/unarchive and ZIP export. The Host has no rollback-safe import or per-session deletion API for this shared store, so the plugin refuses ZIP restore and permanent deletion while preserving existing data and backups. Native tests use real persistence components with simulated workspace/routes. Published client packages for `rc.5` and `alpha.2` also have four mandatory contract checks each in Ubuntu CI, covering module loading, control rendering, settings registration and disposal. These checks omit CSS/layout and are not a full Web UI acceptance test.
 
 The client capability-detects public UI primitives. `HostModal` uses the official headless Modal for complex business content. Ordinary `ConfirmDialog` uses its heading, description and footer. `ControlButton` and `ControlInput` forward refs, disabled state and editing events. Older Hosts retain HTML fallbacks. Native controls use separate styling classes so legacy button CSS cannot override their sizing, colors or hover states. Menus retain filter placement and scrolling constraints; preview content stays within the outer modal bounds. Native modals own focus layering, with document-level legacy traps registered only in compatibility mode. Plugin-owned portals belong to the archive interaction so clicks inside a dialog cannot prematurely release settings protection.
 
@@ -188,10 +190,21 @@ npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --inc
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm ci --prefix test/fixtures/native-host-0.2.2-rc.3 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.3
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.2 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.2
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.5
+npm ci --prefix test/fixtures/native-host-0.2.3-alpha.2 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.3-alpha.2
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.3-alpha.2 --test-file test/sqlite-host.test.mjs --expected-tests 4
+npm ci --prefix test/fixtures/client-host-0.2.2-rc.5 --ignore-scripts --include=optional
+node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-0.2.2-rc.5
+npm ci --prefix test/fixtures/client-host-0.2.3-alpha.2 --ignore-scripts --include=optional
+node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-0.2.3-alpha.2
 npm pack --dry-run --json
 git diff --check
 ```
 
-The native commands install the locked `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3` fixtures and require all nine native integration cases to run without skips for each fixture. This is the local equivalent of the mandatory native Host integration gate in CI.
+The native commands install the locked `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2`, `0.2.2-rc.3`, `0.2.2-rc.5` and `0.2.3-alpha.2` fixtures and require all nine native integration cases to run without skips for each fixture. This is the local equivalent of the mandatory native Host integration gate in CI.
 
-The declared DSH `>=0.1.0-rc.7` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24 on Ubuntu, macOS, and Windows; the Node.js 24 matrix requires all five official Host backend fixtures, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3`, on all three platforms (9/9 each), along with package checks, including the v4 session format. The [screenshots](../screenshots.json) show the current interface with synthetic example chats.
+The declared DSH `>=0.1.0-rc.7 || 0.2.3-alpha.2` range remains capability-based. Release automation tests Node.js 18 on Ubuntu and Node.js 24.22.3 on Ubuntu, macOS, and Windows; the Node.js 24.22.3 matrix requires all eight official Host backend fixtures, `@deepseek-ai/dsh-session@0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2`, `0.2.2-rc.3`, `0.2.2-rc.5` and `0.2.3-alpha.2`, on all three platforms (9/9 each), along with package checks, including the v4 session format. The [screenshots](../screenshots.json) show the current interface with synthetic example chats.

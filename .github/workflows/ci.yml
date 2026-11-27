@@ -82,6 +82,33 @@ jobs:
           - os: windows-latest
             label: windows / DSH 0.2.2-rc.3
             fixture: native-host-0.2.2-rc.3
+          - os: ubuntu-latest
+            label: ubuntu / DSH 0.2.2-rc.2
+            fixture: native-host-0.2.2-rc.2
+          - os: macos-latest
+            label: macos / DSH 0.2.2-rc.2
+            fixture: native-host-0.2.2-rc.2
+          - os: windows-latest
+            label: windows / DSH 0.2.2-rc.2
+            fixture: native-host-0.2.2-rc.2
+          - os: ubuntu-latest
+            label: ubuntu / DSH 0.2.2-rc.5
+            fixture: native-host-0.2.2-rc.5
+          - os: macos-latest
+            label: macos / DSH 0.2.2-rc.5
+            fixture: native-host-0.2.2-rc.5
+          - os: windows-latest
+            label: windows / DSH 0.2.2-rc.5
+            fixture: native-host-0.2.2-rc.5
+          - os: ubuntu-latest
+            label: ubuntu / DSH 0.2.3-alpha.2
+            fixture: native-host-0.2.3-alpha.2
+          - os: macos-latest
+            label: macos / DSH 0.2.3-alpha.2
+            fixture: native-host-0.2.3-alpha.2
+          - os: windows-latest
+            label: windows / DSH 0.2.3-alpha.2
+            fixture: native-host-0.2.3-alpha.2
 
     steps:
       - uses: actions/checkout@v6
@@ -90,7 +117,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "24.22.3"
           package-manager-cache: false
 
       - run: npm ci
@@ -104,4 +131,26 @@ jobs:
         run: npm install --prefix test/fixtures/${{ matrix.fixture }} --ignore-scripts --include=optional --package-lock=true
       - name: Run mandatory native Host integration
         run: node scripts/run-native-integration.mjs --fixture-root test/fixtures/${{ matrix.fixture }}
+      - name: Run mandatory SQLite compatibility and safety checks
+        if: matrix.fixture == 'native-host-0.2.3-alpha.2'
+        run: node scripts/run-native-integration.mjs --fixture-root test/fixtures/${{ matrix.fixture }} --test-file test/sqlite-host.test.mjs --expected-tests 4
       - run: npm pack --dry-run --json
+
+  client-host:
+    name: Client contract / DSH ${{ matrix.host }} / Node 24.22.3
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [0.2.2-rc.5, 0.2.3-alpha.2]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.22.3"
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm ci --prefix test/fixtures/client-host-${{ matrix.host }} --ignore-scripts --include=optional
+      - run: node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-${{ matrix.host }}

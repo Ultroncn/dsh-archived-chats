@@ -34,7 +34,7 @@
 - **可迁移备份：** 导出和导入 JSON + Markdown ZIP；导入前预览，跳过已有 ID，不覆盖现有数据。
 - **会话溯源：** 只读的「来源与分支」视图查看所有工作区中已归档、未归档会话的来源、分叉和子代理关系。
 
-> 本文描述 2.0.7，旧恢复功能已移除，永久删除支持任务重试。
+> 本文描述 2.0.8，旧恢复功能已移除，永久删除支持任务重试。
 
 <a name="install-and-open"></a>
 
@@ -107,7 +107,11 @@ dsh plugin --profile web update dsh-archived-chats
 
 ## 兼容性
 
-声明范围为 DSH `>=0.1.0-rc.7`，具体能力仍取决于 Host。原生集成测试覆盖官方 `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1` 与 `0.2.2-rc.3` 后端；CI 在 macOS、Windows 和 Linux 上运行 Host 测试矩阵。
+默认 JSONL 后端覆盖归档、取消归档、ZIP 导出与恢复，以及永久删除和失败回滚。`0.2.3-alpha.2` 需要 Node.js `^24.22.3 || >=26.13.1`。可选 SQLite 后端已验证列表、预览、归档/取消归档和 ZIP 导出；宿主尚未提供可安全回滚的导入或单会话删除接口，插件会拒绝 ZIP 恢复和永久删除，保留现有数据与备份。原生测试使用真实持久化组件和模拟的工作区/路由，不等同于完整 Web 界面验收。
+
+2.0.8 另在 macOS 的官方 DSH `0.2.2-rc.5` 与 `0.2.3-alpha.2` Web 界面中，用隔离的虚构会话完成了检索与预览、工作区批量归档、标签备注刷新保留、ZIP 下载、删除后导入恢复、取消归档和谱系图验收。alpha.2 还检查了窄屏预览与导出入口。这些结果不涵盖 Windows/Linux 桌面端的完整交互。
+
+声明范围为 DSH `>=0.1.0-rc.7 || 0.2.3-alpha.2`，具体能力仍取决于 Host。原生集成测试覆盖官方 `0.1.7-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.2`、`0.2.2-rc.3`、`0.2.2-rc.5` 与 `0.2.3-alpha.2` 后端；CI 在 macOS、Windows 和 Linux 上运行 Host 测试矩阵。
 
 归档、取消归档、列表读取以官方能力为基础。永久删除由插件协调会话生命周期和存储位置完成，并非调用一个官方统一删除接口。详见[兼容性与限制](docs/USER_GUIDE.zh-CN.md#兼容性与限制)。
 
@@ -168,7 +172,10 @@ dsh plugin --profile web update dsh-archived-chats
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Ultroncn/dsh-archived-chats/ci.yml?branch=main&style=flat&label=CI)](https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml) [![Node.js 18 | 24](https://img.shields.io/badge/Node.js-18%20%7C%2024-339933?style=flat&logo=nodedotjs&logoColor=white)](https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml)
 
+运行完整原生矩阵请使用 Node.js 24.22.3（满足 alpha 宿主要求）。
+
 ```sh
+npm ci
 npm test
 npm ci --prefix test/fixtures/native-host --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs
@@ -180,6 +187,17 @@ npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --inc
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm ci --prefix test/fixtures/native-host-0.2.2-rc.3 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.3
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.2 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.2
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.5
+npm ci --prefix test/fixtures/native-host-0.2.3-alpha.2 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.3-alpha.2
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.3-alpha.2 --test-file test/sqlite-host.test.mjs --expected-tests 4
+npm ci --prefix test/fixtures/client-host-0.2.2-rc.5 --ignore-scripts --include=optional
+node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-0.2.2-rc.5
+npm ci --prefix test/fixtures/client-host-0.2.3-alpha.2 --ignore-scripts --include=optional
+node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-0.2.3-alpha.2
 npm pack --dry-run --json
 ```
 

@@ -34,7 +34,7 @@ Archive Management adds conversation search, organization and backups to DeepSee
 - **Portable backups:** export and import JSON + Markdown ZIPs; imports preview before writing and skip existing IDs to avoid overwrites.
 - **Conversation lineage:** read-only Origins & Branches view traces sources, forks and subagent relationships across all workspaces, including archived and unarchived chats.
 
-> This document describes version 2.0.7. Previous recovery features are removed, with explicit retries for permanent-deletion tasks.
+> This document describes version 2.0.8. Previous recovery features are removed, with explicit retries for permanent-deletion tasks.
 
 ## Install and open
 
@@ -93,7 +93,11 @@ Installing an older release can restore its earlier cleanup rules. Before downgr
 
 ## Compatibility
 
-The declared range is DSH `>=0.1.0-rc.7`; features still depend on Host capabilities. Native integration tests cover official `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1` and `0.2.2-rc.3` backends; CI runs the Host matrix on macOS, Windows and Linux.
+The default JSONL backend covers archive/unarchive, ZIP export/restore, permanent deletion and failure rollback. `0.2.3-alpha.2` requires Node.js `^24.22.3 || >=26.13.1`. The optional SQLite backend is tested for inventory, preview, archive/unarchive and ZIP export. The Host has no rollback-safe import or per-session deletion API for this shared store, so the plugin refuses ZIP restore and permanent deletion while preserving existing data and backups. Native tests use real persistence components with simulated workspace/routes; they are not a full Web UI acceptance test.
+
+For 2.0.8, isolated synthetic chats also passed manual Web acceptance on macOS with official DSH `0.2.2-rc.5` and `0.2.3-alpha.2`: search and previews, workspace bulk archive, tags and notes across refresh, ZIP downloads, deletion followed by ZIP restore, unarchive and lineage graphs. The alpha.2 check also covered narrow-screen previews and export controls. This does not cover full Windows/Linux desktop interactions.
+
+The declared range is DSH `>=0.1.0-rc.7 || 0.2.3-alpha.2`; features still depend on Host capabilities. Native integration tests cover official `0.1.7-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2`, `0.2.2-rc.3`, `0.2.2-rc.5` and `0.2.3-alpha.2` backends; CI runs the Host matrix on macOS, Windows and Linux.
 
 Archive, unarchive and inventory use official capabilities. Permanent deletion coordinates Host session lifecycle and storage locations rather than calling one unified public deletion API. See [compatibility and limits](docs/USER_GUIDE.md#compatibility-and-limits).
 
@@ -148,7 +152,10 @@ Use [Discussions](https://github.com/Ultroncn/dsh-archived-chats/discussions) fo
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Ultroncn/dsh-archived-chats/ci.yml?branch=main&style=flat&label=CI)](https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml) [![Node.js 18 | 24](https://img.shields.io/badge/Node.js-18%20%7C%2024-339933?style=flat&logo=nodedotjs&logoColor=white)](https://github.com/Ultroncn/dsh-archived-chats/actions/workflows/ci.yml)
 
+Use Node.js 24.22.3 for the complete native matrix, including the alpha Host.
+
 ```sh
+npm ci
 npm test
 npm ci --prefix test/fixtures/native-host --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs
@@ -160,6 +167,17 @@ npm install --prefix test/fixtures/native-host-0.2.2-rc.1 --ignore-scripts --inc
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.1
 npm ci --prefix test/fixtures/native-host-0.2.2-rc.3 --ignore-scripts --include=optional
 node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.3
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.2 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.2
+npm ci --prefix test/fixtures/native-host-0.2.2-rc.5 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.2-rc.5
+npm ci --prefix test/fixtures/native-host-0.2.3-alpha.2 --ignore-scripts --include=optional
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.3-alpha.2
+node scripts/run-native-integration.mjs --fixture-root test/fixtures/native-host-0.2.3-alpha.2 --test-file test/sqlite-host.test.mjs --expected-tests 4
+npm ci --prefix test/fixtures/client-host-0.2.2-rc.5 --ignore-scripts --include=optional
+node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-0.2.2-rc.5
+npm ci --prefix test/fixtures/client-host-0.2.3-alpha.2 --ignore-scripts --include=optional
+node scripts/check-client-host.mjs --fixture-root test/fixtures/client-host-0.2.3-alpha.2
 npm pack --dry-run --json
 ```
 
